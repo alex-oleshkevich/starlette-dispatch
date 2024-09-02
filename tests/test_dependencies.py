@@ -7,7 +7,7 @@ from starlette.responses import PlainTextResponse, Response
 from starlette.testclient import TestClient
 
 from starlette_dispatch.dependencies import FromPath, PathParamValue
-from starlette_dispatch.injections import Dependency, DependencyError, DependencySpec
+from starlette_dispatch.injections import FactoryDependency, DependencyError, DependencySpec
 from starlette_dispatch.route_group import RouteGroup
 
 
@@ -79,7 +79,7 @@ class TestPathParamValue:
                     optional=False,
                     annotation=str,
                     resolver_options=[],
-                    resolver=Dependency(lambda: None),
+                    resolver=FactoryDependency(lambda: None),
                 ),
                 {},
             )

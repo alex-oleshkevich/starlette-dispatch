@@ -26,7 +26,9 @@ class DependencyResolver(abc.ABC):  # pragma: no cover
     ) -> typing.Any: ...
 
 
-class Dependency(DependencyResolver):
+class FactoryDependency(DependencyResolver):
+    """Dependency resolver that resolves dependencies from factories."""
+
     def __init__(self, resolver: typing.Callable[_PS, typing.Any], *, cached: bool = False) -> None:
         self._cached = cached
         self._resolver = resolver
@@ -46,6 +48,8 @@ class Dependency(DependencyResolver):
 
 
 class NoDependencyResolver(DependencyResolver):
+    """Resolver that raises an error when a dependency is not found."""
+
     async def resolve(self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]) -> typing.Any:
         if spec.param_type in prepared_dependencies:
             return prepared_dependencies[spec.param_type]
@@ -55,6 +59,16 @@ class NoDependencyResolver(DependencyResolver):
             f'no resolver registered for type "{spec.param_type.__name__}".'
         )
         raise DependencyNotFoundError(message)
+
+
+class VariableDependency(DependencyResolver):
+    """Simple resolver that returns the same value for all dependencies."""
+
+    def __init__(self, value: str) -> None:
+        self._value = value
+
+    async def resolve(self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]) -> typing.Any:
+        return self._value
 
 
 @dataclasses.dataclass(slots=True)

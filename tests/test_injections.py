@@ -6,12 +6,13 @@ import pytest
 
 from starlette_dispatch.injections import (
     create_dependency_specs,
-    Dependency,
     DependencyError,
     DependencyNotFoundError,
     DependencyRequiresValueError,
     DependencySpec,
+    FactoryDependency,
     resolve_dependencies,
+    VariableDependency,
 )
 
 
@@ -23,8 +24,8 @@ def resolver_two() -> str:
     return "level2"
 
 
-_IntDependency = typing.Annotated[int, Dependency(resolver_one)]
-_L2Dependency = typing.Annotated[int, Dependency(resolver_two)]
+_IntDependency = typing.Annotated[int, FactoryDependency(resolver_one)]
+_L2Dependency = typing.Annotated[int, FactoryDependency(resolver_two)]
 
 
 async def test_create_dependency_resolvers() -> None:
@@ -40,7 +41,7 @@ async def test_async_dependencies() -> None:
     async def factory() -> str:
         return "ok"
 
-    AsyncFactory = typing.Annotated[str, Dependency(factory)]
+    AsyncFactory = typing.Annotated[str, FactoryDependency(factory)]
 
     def view(dep: AsyncFactory) -> str:
         return dep
@@ -54,12 +55,12 @@ async def test_async_subdependencies() -> None:
     async def parent_factory() -> str:
         return "ok"
 
-    ParentFactory = typing.Annotated[str, Dependency(parent_factory)]
+    ParentFactory = typing.Annotated[str, FactoryDependency(parent_factory)]
 
     async def factory(parent: ParentFactory) -> str:
         return f"ok-{parent}"
 
-    AsyncFactory = typing.Annotated[str, Dependency(factory)]
+    AsyncFactory = typing.Annotated[str, FactoryDependency(factory)]
 
     def view(dep: AsyncFactory) -> str:
         return dep
@@ -73,7 +74,7 @@ async def test_cached_dependencies() -> None:
     async def factory() -> float:
         return time.time()
 
-    AsyncFactory = typing.Annotated[float, Dependency(factory, cached=True)]
+    AsyncFactory = typing.Annotated[float, FactoryDependency(factory, cached=True)]
 
     def view(dep: AsyncFactory) -> float:
         return dep
@@ -88,12 +89,12 @@ async def test_cached_subdependencies() -> None:
     async def parent_factory() -> float:
         return time.time()
 
-    ParentFactory = typing.Annotated[float, Dependency(parent_factory, cached=True)]
+    ParentFactory = typing.Annotated[float, FactoryDependency(parent_factory, cached=True)]
 
     async def factory(parent: ParentFactory) -> float:
         return parent
 
-    AsyncFactory = typing.Annotated[float, Dependency(factory)]
+    AsyncFactory = typing.Annotated[float, FactoryDependency(factory)]
 
     def view(dep: AsyncFactory) -> float:
         return dep
@@ -110,12 +111,12 @@ async def test_with_subdependencies() -> None:
     def user_provider() -> dict[str, str]:
         return user_data
 
-    UserProvider = typing.Annotated[dict[str, str], Dependency(user_provider)]
+    UserProvider = typing.Annotated[dict[str, str], FactoryDependency(user_provider)]
 
     def username_resolver(user: UserProvider) -> str:
         return user["username"]
 
-    UserName = typing.Annotated[str, Dependency(username_resolver)]
+    UserName = typing.Annotated[str, FactoryDependency(username_resolver)]
 
     def view(user: UserProvider, username: UserName) -> int:
         return 0
@@ -184,7 +185,7 @@ async def test_injects_dependency_spec_in_subdependencies() -> None:
     def requirement(spec: DependencySpec) -> DependencySpec:
         return spec
 
-    Requirement = typing.Annotated[DependencySpec, Dependency(requirement)]
+    Requirement = typing.Annotated[DependencySpec, FactoryDependency(requirement)]
 
     def view(req: Requirement) -> None: ...
 
@@ -198,7 +199,7 @@ async def test_non_optional_dependency_raises_for_none() -> None:
     def requirement() -> str | None:
         return None
 
-    Requirement = typing.Annotated[str, Dependency(requirement)]
+    Requirement = typing.Annotated[str, FactoryDependency(requirement)]
 
     def view(req: Requirement) -> None: ...
 
@@ -211,7 +212,7 @@ async def test_optional_dependency_not_raises_for_none() -> None:
     def requirement() -> str | None:
         return None
 
-    Requirement = typing.Annotated[str, Dependency(requirement)]
+    Requirement = typing.Annotated[str, FactoryDependency(requirement)]
 
     def view(req: Requirement | None) -> None: ...
 
@@ -224,7 +225,7 @@ async def test_raises_for_unsupported_unions() -> None:
     async def factory() -> float:
         return time.time()
 
-    AsyncFactory = typing.Annotated[float, Dependency(factory, cached=True)]
+    AsyncFactory = typing.Annotated[float, FactoryDependency(factory, cached=True)]
 
     def view(dep: AsyncFactory | int) -> float:
         return dep
@@ -250,3 +251,91 @@ async def test_without_factory() -> None:
     with pytest.raises(DependencyError, match="does not contain factory in annotation"):
         resolvers = create_dependency_specs(view)
         await resolve_dependencies(resolvers, {})
+
+
+class TestFactoryResolver:
+    async def test_sync_factory(self) -> None:
+        def factory() -> str:
+            return "abc"
+
+        resolver = FactoryDependency(factory)
+        spec = DependencySpec(
+            resolver=resolver,
+            optional=False,
+            param_type=str,
+            default=None,
+            param_name="dep",
+            annotation=str,
+            resolver_options=[],
+        )
+        value = await resolver.resolve(spec, {})
+        assert value == "abc"
+
+    async def test_async_factory(self) -> None:
+        async def factory() -> str:
+            return "abc"
+
+        resolver = FactoryDependency(factory)
+        spec = DependencySpec(
+            resolver=resolver,
+            optional=False,
+            param_type=str,
+            default=None,
+            param_name="dep",
+            annotation=str,
+            resolver_options=[],
+        )
+        value = await resolver.resolve(spec, {})
+        assert value == "abc"
+
+    async def test_cached_dependency(self) -> None:
+        def factory() -> float:
+            return time.time()
+
+        resolver = FactoryDependency(factory, cached=True)
+        spec = DependencySpec(
+            resolver=resolver,
+            optional=False,
+            param_type=str,
+            default=None,
+            param_name="dep",
+            annotation=str,
+            resolver_options=[],
+        )
+        value = await resolver.resolve(spec, {})
+        value2 = await resolver.resolve(spec, {})
+        assert value == value2
+
+    async def test_cached_dependency_failure(self) -> None:
+        def factory() -> float:
+            return time.time()
+
+        resolver = FactoryDependency(factory, cached=False)
+        spec = DependencySpec(
+            resolver=resolver,
+            optional=False,
+            param_type=str,
+            default=None,
+            param_name="dep",
+            annotation=str,
+            resolver_options=[],
+        )
+        value = await resolver.resolve(spec, {})
+        value2 = await resolver.resolve(spec, {})
+        assert value != value2
+
+
+class TestVariableResolver:
+    async def test_variable_resolver(self) -> None:
+        resolver = VariableDependency("abc")
+        spec = DependencySpec(
+            resolver=resolver,
+            optional=False,
+            param_type=str,
+            default=None,
+            param_name="dep",
+            annotation=str,
+            resolver_options=[],
+        )
+        value = await resolver.resolve(spec, {})
+        assert value == "abc"
