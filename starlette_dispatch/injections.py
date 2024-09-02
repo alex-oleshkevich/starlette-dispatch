@@ -73,7 +73,7 @@ class VariableDependency(DependencyResolver):
         return self._value
 
 
-class StateDependency(DependencyResolver):
+class RequestDependency(DependencyResolver):
     """Helper resolver that uses request state to return dependency values.
     It accepts a callable that receives HTTPConnection (like Request or WebSocket) and returns a value.
 

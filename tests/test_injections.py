@@ -13,7 +13,7 @@ from starlette_dispatch.injections import (
     DependencySpec,
     FactoryDependency,
     resolve_dependencies,
-    StateDependency,
+    RequestDependency,
     VariableDependency,
 )
 
@@ -343,9 +343,9 @@ class TestVariableResolver:
         assert value == "abc"
 
 
-class TestStateDependency:
+class TestRequestDependency:
     async def test_variable_resolver(self) -> None:
-        resolver = StateDependency(lambda r, d: r.state.dep)
+        resolver = RequestDependency(lambda r, d: r.state.dep)
         spec = DependencySpec(
             resolver=resolver,
             optional=False,

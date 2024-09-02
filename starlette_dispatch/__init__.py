@@ -5,7 +5,7 @@ from starlette_dispatch.injections import (
     DependencySpec,
     FactoryDependency,
     VariableDependency,
-    StateDependency,
+    RequestDependency,
 )
 from starlette_dispatch.route_group import RouteGroup
 
@@ -14,7 +14,7 @@ __all__ = [
     "DependencySpec",
     "FactoryDependency",
     "VariableDependency",
-    "StateDependency",
+    "RequestDependency",
     "DependencyError",
     "RouteGroup",
     "PathParamValue",
