@@ -23,8 +23,7 @@ class DependencyResolver(abc.ABC):  # pragma: no cover
     @abc.abstractmethod
     async def resolve(
         self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]
-    ) -> typing.Any:
-        ...
+    ) -> typing.Any: ...
 
 
 class Dependency(DependencyResolver):
@@ -35,9 +34,7 @@ class Dependency(DependencyResolver):
         self._is_async = inspect.iscoroutinefunction(resolver)
         self._value: typing.Any = None
 
-    async def resolve(
-        self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]
-    ) -> typing.Any:
+    async def resolve(self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]) -> typing.Any:
         prepared_dependencies = {**prepared_dependencies, DependencySpec: spec}
         dependencies = await resolve_dependencies(self._dependencies, prepared_resolvers=prepared_dependencies)
 
@@ -49,10 +46,7 @@ class Dependency(DependencyResolver):
 
 
 class NoDependencyResolver(DependencyResolver):
-
-    async def resolve(
-        self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]
-    ) -> typing.Any:
+    async def resolve(self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]) -> typing.Any:
         if spec.param_type in prepared_dependencies:
             return prepared_dependencies[spec.param_type]
 
@@ -105,9 +99,7 @@ def create_dependency_from_parameter(parameter: inspect.Parameter) -> Dependency
                 resolver = defined_resolver
                 resolver_options = options
             case _:
-                raise DependencyError(
-                    f'Dependency "{parameter}" does not contain factory in annotation.'
-                )
+                raise DependencyError(f'Dependency "{parameter}" does not contain factory in annotation.')
     else:
         resolver = NoDependencyResolver()
 
@@ -125,10 +117,7 @@ def create_dependency_from_parameter(parameter: inspect.Parameter) -> Dependency
 
 def create_dependency_specs(fn: typing.Callable[..., typing.Any]) -> typing.Mapping[str, DependencySpec]:
     signature = inspect.signature(fn, eval_str=True)
-    return {
-        parameter.name: create_dependency_from_parameter(parameter)
-        for parameter in signature.parameters.values()
-    }
+    return {parameter.name: create_dependency_from_parameter(parameter) for parameter in signature.parameters.values()}
 
 
 async def resolve_dependencies(
@@ -137,10 +126,12 @@ async def resolve_dependencies(
 ) -> dict[str, typing.Any]:
     dependencies: dict[str, typing.Any] = {}
     for param_name, spec in resolvers.items():
-        dependency = await spec.resolve({
-            **prepared_resolvers,
-            DependencySpec: spec,
-        })
+        dependency = await spec.resolve(
+            {
+                **prepared_resolvers,
+                DependencySpec: spec,
+            }
+        )
         if dependency is None and not spec.optional:
             message = f'Dependency "{spec.param_name}" has None value but it is not optional.'
             raise DependencyRequiresValueError(message)

@@ -12,9 +12,7 @@ class PathParamValue(DependencyResolver):
     def __init__(self, param_name: str = "") -> None:
         self.param_name = param_name
 
-    async def resolve(
-        self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]
-    ) -> typing.Any:
+    async def resolve(self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]) -> typing.Any:
         param_name = self.param_name or spec.param_name
         conn: HTTPConnection | None = prepared_dependencies.get(Request, prepared_dependencies.get(WebSocket))
         if not conn:

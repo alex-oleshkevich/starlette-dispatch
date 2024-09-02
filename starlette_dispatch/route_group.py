@@ -18,13 +18,13 @@ _RT = typing.TypeVar("_RT")
 
 
 def unwrap_callable(
-    fn: typing.Callable[..., typing.Awaitable[Response]]
+    fn: typing.Callable[..., typing.Awaitable[Response]],
 ) -> typing.Callable[..., typing.Awaitable[Response]]:
     return fn if not hasattr(fn, "__wrapped__") else unwrap_callable(fn.__wrapped__)
 
 
 def unwrap_websocket_callable(
-    fn: typing.Callable[..., typing.Awaitable[None]]
+    fn: typing.Callable[..., typing.Awaitable[None]],
 ) -> typing.Callable[..., typing.Awaitable[None]]:
     callback = fn if not hasattr(fn, "__wrapped__") else unwrap_callable(fn.__wrapped__)
     return typing.cast(typing.Callable[..., typing.Awaitable[None]], callback)
@@ -51,10 +51,13 @@ class RouteGroup(typing.Sequence[BaseRoute]):
 
             @functools.wraps(unwrapped_view_callable)
             async def endpoint(request: Request) -> Response:
-                dependencies = await resolve_dependencies(resolvers, prepared_resolvers={
-                    Request: request,
-                    HTTPConnection: request,
-                })
+                dependencies = await resolve_dependencies(
+                    resolvers,
+                    prepared_resolvers={
+                        Request: request,
+                        HTTPConnection: request,
+                    },
+                )
                 return await unwrapped_view_callable(**dependencies)
 
             self.routes.append(Route(path, endpoint, name=name, methods=methods, middleware=middleware))
@@ -103,10 +106,13 @@ class RouteGroup(typing.Sequence[BaseRoute]):
 
             @functools.wraps(unwrapped_view_callable)
             async def endpoint(websocket: WebSocket) -> None:
-                dependencies = await resolve_dependencies(resolvers, prepared_resolvers={
-                    WebSocket: websocket,
-                    HTTPConnection: websocket,
-                })
+                dependencies = await resolve_dependencies(
+                    resolvers,
+                    prepared_resolvers={
+                        WebSocket: websocket,
+                        HTTPConnection: websocket,
+                    },
+                )
                 await unwrapped_view_callable(**dependencies)
 
             self.routes.append(WebSocketRoute(path, endpoint, name=name, middleware=middleware))

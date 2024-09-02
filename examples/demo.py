@@ -8,18 +8,17 @@ from starlette.routing import Route
 from starlette.templating import Jinja2Templates
 
 this_dir = Path(__file__).parent
-templates = Jinja2Templates(this_dir / 'templates')
-
+templates = Jinja2Templates(this_dir / "templates")
 
 
 def index_view(request: Request) -> Response:
-    return templates.TemplateResponse('index.html', {'request': request})
+    return templates.TemplateResponse("index.html", {"request": request})
 
 
 install_error_handler()
 app = Starlette(
     debug=True,
     routes=[
-        Route('/', index_view),
-    ]
+        Route("/", index_view),
+    ],
 )
