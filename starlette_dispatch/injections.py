@@ -5,6 +5,8 @@ import dataclasses
 import inspect
 import typing
 
+from starlette.requests import HTTPConnection
+
 T = typing.TypeVar("T")
 _PS = typing.ParamSpec("_PS")
 _RT = typing.TypeVar("_RT")
@@ -69,6 +71,21 @@ class VariableDependency(DependencyResolver):
 
     async def resolve(self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]) -> typing.Any:
         return self._value
+
+
+class StateDependency(DependencyResolver):
+    """Helper resolver that uses request state to return dependency values.
+    It accepts a callable that receives HTTPConnection (like Request or WebSocket) and returns a value.
+
+    Note: this resolver should be used in request context only.
+    """
+
+    def __init__(self, fn: typing.Callable[[HTTPConnection, DependencySpec], typing.Any]) -> None:
+        self._fn = fn
+
+    async def resolve(self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]) -> typing.Any:
+        conn: HTTPConnection = prepared_dependencies[HTTPConnection]
+        return self._fn(conn, spec)
 
 
 @dataclasses.dataclass(slots=True)

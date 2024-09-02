@@ -3,6 +3,7 @@ import time
 import typing
 
 import pytest
+from starlette.requests import HTTPConnection
 
 from starlette_dispatch.injections import (
     create_dependency_specs,
@@ -12,6 +13,7 @@ from starlette_dispatch.injections import (
     DependencySpec,
     FactoryDependency,
     resolve_dependencies,
+    StateDependency,
     VariableDependency,
 )
 
@@ -338,4 +340,22 @@ class TestVariableResolver:
             resolver_options=[],
         )
         value = await resolver.resolve(spec, {})
+        assert value == "abc"
+
+
+class TestStateDependency:
+    async def test_variable_resolver(self) -> None:
+        resolver = StateDependency(lambda r, d: r.state.dep)
+        spec = DependencySpec(
+            resolver=resolver,
+            optional=False,
+            param_type=str,
+            default=None,
+            param_name="dep",
+            annotation=str,
+            resolver_options=[],
+        )
+        value = await resolver.resolve(
+            spec, {HTTPConnection: HTTPConnection({"type": "http", "state": {"dep": "abc"}})}
+        )
         assert value == "abc"
