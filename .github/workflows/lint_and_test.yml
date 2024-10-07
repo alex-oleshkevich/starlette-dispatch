@@ -5,6 +5,8 @@ name: Lint and test
 
 on:
     push:
+    workflow_dispatch:
+
 
 jobs:
     pre_commit:
@@ -58,7 +60,7 @@ jobs:
 
             -   name: "Generate coverage"
                 run: |
-                  ./scripts/testcover.sh
+                    ./scripts/testcover.sh
 
             -   name: "Upload coverage"
                 uses: codecov/codecov-action@v3
