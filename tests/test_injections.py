@@ -359,3 +359,19 @@ class TestRequestDependency:
             spec, {HTTPConnection: HTTPConnection({"type": "http", "state": {"dep": "abc"}})}
         )
         assert value == "abc"
+
+    async def test_request_only(self) -> None:
+        resolver = RequestDependency(lambda r: r.state.dep)
+        spec = DependencySpec(
+            resolver=resolver,
+            optional=False,
+            param_type=str,
+            default=None,
+            param_name="dep",
+            annotation=str,
+            resolver_options=[],
+        )
+        value = await resolver.resolve(
+            spec, {HTTPConnection: HTTPConnection({"type": "http", "state": {"dep": "abc"}})}
+        )
+        assert value == "abc"

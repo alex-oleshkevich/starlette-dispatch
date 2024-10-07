@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 import functools
+import inspect
 import typing
 
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware import Middleware
 from starlette.requests import HTTPConnection, Request
 from starlette.responses import Response
@@ -9,7 +13,9 @@ from starlette.websockets import WebSocket
 
 from starlette_dispatch.injections import create_dependency_specs, resolve_dependencies
 
-ViewCallable = typing.Callable[[Request], typing.Awaitable[Response]]
+AsyncViewCallable = typing.Callable[..., typing.Awaitable[Response]]
+SyncViewCallable = typing.Callable[..., Response]
+AnyViewCallable = AsyncViewCallable | SyncViewCallable
 WebSocketViewCallable = typing.Callable[[WebSocket], typing.Awaitable[None]]
 HttpMethod = str
 
@@ -17,9 +23,7 @@ _PS = typing.ParamSpec("_PS")
 _RT = typing.TypeVar("_RT")
 
 
-def unwrap_callable(
-    fn: typing.Callable[..., typing.Awaitable[Response]],
-) -> typing.Callable[..., typing.Awaitable[Response]]:
+def unwrap_callable(fn: AnyViewCallable) -> AnyViewCallable:
     return fn if not hasattr(fn, "__wrapped__") else unwrap_callable(fn.__wrapped__)
 
 
@@ -31,9 +35,18 @@ def unwrap_websocket_callable(
 
 
 class RouteGroup(typing.Sequence[BaseRoute]):
-    def __init__(self, prefix: str | None = None) -> None:
+    def __init__(
+        self,
+        prefix: str | None = None,
+        middleware: typing.Sequence[Middleware] | None = None,
+        children: typing.Sequence[RouteGroup] | None = None,
+    ) -> None:
         self.prefix = prefix or ""
         self.routes: list[BaseRoute] = []
+        self._common_middleware = list(middleware or [])
+
+        for child in children or []:
+            self.routes.extend(child)
 
     def add(
         self,
@@ -42,11 +55,11 @@ class RouteGroup(typing.Sequence[BaseRoute]):
         methods: list[HttpMethod] | None = None,
         name: str | None = None,
         middleware: typing.Sequence[Middleware] | None = None,
-    ) -> typing.Callable[[typing.Callable[..., typing.Awaitable[Response]]], ViewCallable]:
+    ) -> typing.Callable[[AnyViewCallable], AsyncViewCallable]:
         path = self.prefix.removesuffix("/") + path if self.prefix else path
 
-        def decorator(view_callable: typing.Callable[..., typing.Awaitable[Response]]) -> ViewCallable:
-            unwrapped_view_callable: typing.Callable[..., typing.Awaitable[Response]] = unwrap_callable(view_callable)
+        def decorator(view_callable: AnyViewCallable) -> AsyncViewCallable:
+            unwrapped_view_callable = unwrap_callable(view_callable)
             resolvers = create_dependency_specs(unwrapped_view_callable)
 
             @functools.wraps(unwrapped_view_callable)
@@ -58,41 +71,44 @@ class RouteGroup(typing.Sequence[BaseRoute]):
                         HTTPConnection: request,
                     },
                 )
-                return await unwrapped_view_callable(**dependencies)
+                if inspect.iscoroutinefunction(unwrapped_view_callable):
+                    return await typing.cast(AsyncViewCallable, unwrapped_view_callable)(**dependencies)
+                return await run_in_threadpool(typing.cast(SyncViewCallable, unwrapped_view_callable), **dependencies)
 
-            self.routes.append(Route(path, endpoint, name=name, methods=methods, middleware=middleware))
+            all_middleware = self._common_middleware + list(middleware or [])
+            self.routes.append(Route(path, endpoint, name=name, methods=methods, middleware=all_middleware))
             return endpoint
 
         return decorator
 
     def get(
         self, path: str, *, name: str | None = None, middleware: typing.Sequence[Middleware] | None = None
-    ) -> typing.Callable[[typing.Callable[..., typing.Awaitable[Response]]], ViewCallable]:
+    ) -> typing.Callable[[AnyViewCallable], AnyViewCallable]:
         return self.add(path, methods=["GET"], name=name, middleware=middleware)
 
     def post(
         self, path: str, *, name: str | None = None, middleware: typing.Sequence[Middleware] | None = None
-    ) -> typing.Callable[[ViewCallable], ViewCallable]:
+    ) -> typing.Callable[[AnyViewCallable], AnyViewCallable]:
         return self.add(path, methods=["POST"], name=name, middleware=middleware)
 
     def get_or_post(
         self, path: str, *, name: str | None = None, middleware: typing.Sequence[Middleware] | None = None
-    ) -> typing.Callable[[ViewCallable], ViewCallable]:
+    ) -> typing.Callable[[AnyViewCallable], AnyViewCallable]:
         return self.add(path, methods=["GET", "POST"], name=name, middleware=middleware)
 
     def put(
         self, path: str, *, name: str | None = None, middleware: typing.Sequence[Middleware] | None = None
-    ) -> typing.Callable[[ViewCallable], ViewCallable]:
+    ) -> typing.Callable[[AnyViewCallable], AnyViewCallable]:
         return self.add(path, methods=["PUT"], name=name, middleware=middleware)
 
     def patch(
         self, path: str, *, name: str | None = None, middleware: typing.Sequence[Middleware] | None = None
-    ) -> typing.Callable[[ViewCallable], ViewCallable]:
+    ) -> typing.Callable[[AnyViewCallable], AnyViewCallable]:
         return self.add(path, methods=["PATCH"], name=name, middleware=middleware)
 
     def delete(
         self, path: str, *, name: str | None = None, middleware: typing.Sequence[Middleware] | None = None
-    ) -> typing.Callable[[ViewCallable], ViewCallable]:
+    ) -> typing.Callable[[AnyViewCallable], AnyViewCallable]:
         return self.add(path, methods=["DELETE"], name=name, middleware=middleware)
 
     def websocket(

@@ -6,7 +6,7 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 from starlette.testclient import TestClient
 
-from starlette_dispatch.dependencies import FromPath, PathParamValue
+from starlette_dispatch.contrib.dependencies import FromPath, PathParamValue
 from starlette_dispatch.injections import FactoryDependency, DependencyError, DependencySpec
 from starlette_dispatch.route_group import RouteGroup
 

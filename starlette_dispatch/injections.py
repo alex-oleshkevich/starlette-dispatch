@@ -66,7 +66,7 @@ class NoDependencyResolver(DependencyResolver):
 class VariableDependency(DependencyResolver):
     """Simple resolver that returns the same value for all dependencies."""
 
-    def __init__(self, value: str) -> None:
+    def __init__(self, value: typing.Any) -> None:
         self._value = value
 
     async def resolve(self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]) -> typing.Any:
@@ -80,12 +80,23 @@ class RequestDependency(DependencyResolver):
     Note: this resolver should be used in request context only.
     """
 
-    def __init__(self, fn: typing.Callable[[HTTPConnection, DependencySpec], typing.Any]) -> None:
+    def __init__(
+        self,
+        fn: typing.Callable[[HTTPConnection, DependencySpec], typing.Any]
+        | typing.Callable[[HTTPConnection], typing.Any],
+    ) -> None:
         self._fn = fn
+        self.takes_spec = False
+
+        signature = inspect.signature(fn)
+        if len(signature.parameters) == 2:
+            self.takes_spec = True
 
     async def resolve(self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]) -> typing.Any:
         conn: HTTPConnection = prepared_dependencies[HTTPConnection]
-        return self._fn(conn, spec)
+        if self.takes_spec:
+            return self._fn(conn, spec)  # type: ignore[call-arg]
+        return self._fn(conn)  # type: ignore[call-arg]
 
 
 @dataclasses.dataclass(slots=True)

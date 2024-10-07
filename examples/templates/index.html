@@ -1,5 +1,21 @@
 {% extends 'base.html' %}
 
 {% block content %}
-Hello world!
+<ol>
+    <li><a href="/">Home</a></li>
+    <li><a href="/request-dependency">Request dependency</a></li>
+    <li><a href="/factory-dependency">Factory dependency</a></li>
+    <li><a href="/variable-dependency">Variable dependency</a></li>
+    <li><a href="/factory-dependency-dependency">Nested factory dependencies</a></li>
+    <li><a href="/async-dependency">Async dependencies</a></li>
+    <li><a href="/complex-dependency">Complex dependency resolver</a></li>
+    <li><a href="/custom-resolver-dependency">Custom resolver dependency</a></li>
+    <li><a href="/path-dependency/kek">Path dependency</a></li>
+    <li><a href="/path-dependency">Path dependency (fail, no value)</a></li>
+    <li><a href="/path-dependency-optional/kek">Optional path dependency</a></li>
+    <li><a href="/path-dependency-optional">Optional path dependency (ok, no value)</a></li>
+    <li><a href="/multi-one">Multi route 1</a></li>
+    <li><a href="/multi-two">Multi route 2</a></li>
+    <li><a href="/admin">Prefixed, custom middleware</a></li>
+</ol>
 {% endblock %}

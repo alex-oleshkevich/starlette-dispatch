@@ -1,6 +1,7 @@
 import typing
 
 from starlette.applications import Starlette
+from starlette.authentication import requires
 from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
@@ -9,18 +10,20 @@ from starlette.testclient import TestClient
 from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.websockets import WebSocket
 
-from starlette_dispatch.dependencies import PathParamValue
+from starlette_dispatch.contrib.dependencies import PathParamValue
 from starlette_dispatch.injections import FactoryDependency
 from starlette_dispatch.route_group import RouteGroup
 
 
 class _ExampleMiddleware:
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, value: str = "set") -> None:
         self.app = app
+        self.value = value
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        scope["state"] = {}
-        scope["state"]["value"] = "set"
+        scope.setdefault("state", {})
+        scope["state"].setdefault("value", "")
+        scope["state"]["value"] = scope["state"]["value"] + self.value
         await self.app(scope, receive, send)
 
 
@@ -30,6 +33,34 @@ def test_repr(route_group: RouteGroup) -> None:
         return PlainTextResponse("ok")
 
     assert repr(route_group) == "<RouteGroup: 1 route>"
+
+
+def test_common_middleware() -> None:
+    route_group = RouteGroup(middleware=[Middleware(_ExampleMiddleware)])
+
+    @route_group.get("/")
+    async def view(request: Request) -> Response:
+        return PlainTextResponse(request.state.value)
+
+    app = Starlette(routes=route_group)
+    with TestClient(app) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.text == "set"
+
+
+def test_common_middleware_with_route_middleware() -> None:
+    route_group = RouteGroup(middleware=[Middleware(_ExampleMiddleware)])
+
+    @route_group.get("/", middleware=[Middleware(_ExampleMiddleware, value="route")])
+    async def view(request: Request) -> Response:
+        return PlainTextResponse(request.state.value)
+
+    app = Starlette(routes=route_group)
+    with TestClient(app) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.text == "setroute"
 
 
 def test_getattr(route_group: RouteGroup) -> None:
@@ -136,6 +167,79 @@ def test_websocket_dependency_injects_websocket(route_group: RouteGroup) -> None
     with TestClient(app) as client:
         with client.websocket_connect("/test") as session:
             assert session.receive_text() == "/test"
+
+
+def test_norequest_handler(route_group: RouteGroup) -> None:
+    @route_group.get("/test")
+    async def view() -> Response:
+        return PlainTextResponse("ok")
+
+    app = Starlette(routes=route_group)
+    with TestClient(app) as client:
+        response = client.get("/test")
+        assert response.status_code == 200
+        assert response.text == "ok"
+
+    assert client.post("/test").status_code == 405
+
+
+def test_handler_with_decorator(route_group: RouteGroup) -> None:
+    @requires("admin")
+    @route_group.get("/test")
+    async def view(request: Request) -> Response:
+        return PlainTextResponse("ok")
+
+    app = Starlette(routes=route_group)
+    with TestClient(app) as client:
+        response = client.get("/test")
+        assert response.status_code == 200
+        assert response.text == "ok"
+
+    assert client.post("/test").status_code == 405
+
+
+def test_async_handler(route_group: RouteGroup) -> None:
+    @route_group.get("/test")
+    async def view(request: Request) -> Response:
+        return PlainTextResponse("ok")
+
+    app = Starlette(routes=route_group)
+    with TestClient(app) as client:
+        response = client.get("/test")
+        assert response.status_code == 200
+        assert response.text == "ok"
+
+    assert client.post("/test").status_code == 405
+
+
+def test_sync_handler(route_group: RouteGroup) -> None:
+    @route_group.get("/test")
+    def view(request: Request) -> Response:
+        return PlainTextResponse("ok")
+
+    app = Starlette(routes=route_group)
+    with TestClient(app) as client:
+        response = client.get("/test")
+        assert response.status_code == 200
+        assert response.text == "ok"
+
+    assert client.post("/test").status_code == 405
+
+
+def test_children() -> None:
+    child_group = RouteGroup()
+
+    @child_group.get("/test")
+    def view(request: Request) -> Response:
+        return PlainTextResponse("ok")
+
+    app = Starlette(routes=RouteGroup(children=[child_group]))
+    with TestClient(app) as client:
+        response = client.get("/test")
+        assert response.status_code == 200
+        assert response.text == "ok"
+
+    assert client.post("/test").status_code == 405
 
 
 class TestGet:

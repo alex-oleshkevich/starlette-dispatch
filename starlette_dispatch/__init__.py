@@ -1,4 +1,4 @@
-from starlette_dispatch.dependencies import FromPath, PathParamValue
+from starlette_dispatch.contrib.dependencies import FromPath, PathParamValue
 from starlette_dispatch.injections import (
     DependencyError,
     DependencyResolver,
