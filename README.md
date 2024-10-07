@@ -139,14 +139,14 @@ import typing
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from starlette_dispatch import RouteGroup
+from starlette_dispatch import RouteGroup, VariableDependency
 
 
 class User: ...
 
 
 user = User()
-CurrentUser = typing.Annotated[str, user]
+CurrentUser = typing.Annotated[str, VariableDependency(user)]
 
 group = RouteGroup('/')
 
