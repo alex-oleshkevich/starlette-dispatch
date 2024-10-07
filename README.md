@@ -47,14 +47,14 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from starlette_dispatch import RouteGroup
+from starlette_dispatch import RouteGroup, RequestDependency
 
 admin_middleware = [
     Middleware(AuthenticationMiddleware, backend=...)
 ]
 admin_routes = RouteGroup('/admin', middleware=admin_middleware)
 
-CurrentUser = typing.Annotated[SimpleUser, lambda r: r.user]
+CurrentUser = typing.Annotated[SimpleUser, RequestDependency(lambda r: r.user)]
 
 
 async def index_view(request: Request, user: CurrentUser) -> JSONResponse:
