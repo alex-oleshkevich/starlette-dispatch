@@ -1,9 +1,10 @@
 import dataclasses
 import time
 import typing
+from unittest import mock
 
 import pytest
-from starlette.requests import HTTPConnection
+from starlette.requests import HTTPConnection, Request
 
 from starlette_dispatch.injections import (
     create_dependency_specs,
@@ -237,22 +238,12 @@ async def test_raises_for_unsupported_unions() -> None:
         await resolve_dependencies(resolvers, {})
 
 
-async def test_raises_for_unsupported_annotation() -> None:
-    def view(dep: typing.Annotated[float, "boom"]) -> float:
-        return dep
-
-    with pytest.raises(DependencyError, match="does not contain factory in annotation"):
-        resolvers = create_dependency_specs(view)
-        await resolve_dependencies(resolvers, {})
-
-
 async def test_without_factory() -> None:
-    def view(dep: typing.Annotated[None, "str"] | None) -> str | None:
+    def view(dep: typing.Annotated[None, "str"]) -> str | None:
         return dep
 
-    with pytest.raises(DependencyError, match="does not contain factory in annotation"):
-        resolvers = create_dependency_specs(view)
-        await resolve_dependencies(resolvers, {})
+    resolvers = create_dependency_specs(view)
+    assert await resolve_dependencies(resolvers, {}) == {"dep": "str"}
 
 
 class TestFactoryResolver:
@@ -375,3 +366,87 @@ class TestRequestDependency:
             spec, {HTTPConnection: HTTPConnection({"type": "http", "state": {"dep": "abc"}})}
         )
         assert value == "abc"
+
+
+class TestGuessResolverType:
+    async def test_variable_dependency(self) -> None:
+        Requirement = typing.Annotated[str, "value"]
+
+        def view(req: Requirement) -> None: ...
+
+        resolvers = create_dependency_specs(view)
+        dependencies = await resolve_dependencies(resolvers, {})
+        assert dependencies == {"req": "value"}
+
+    async def test_zero_lambda_dependency(self) -> None:
+        Requirement = typing.Annotated[str, lambda: "value"]
+
+        def view(req: Requirement) -> None: ...
+
+        resolvers = create_dependency_specs(view)
+        dependencies = await resolve_dependencies(
+            resolvers,
+            {
+                HTTPConnection: Request({"type": "http"}, mock.AsyncMock(), mock.AsyncMock()),
+            },
+        )
+        assert dependencies == {"req": "value"}
+
+    async def test_one_lambda_dependency(self) -> None:
+        Requirement = typing.Annotated[str, lambda r: r.__class__.__name__]
+
+        def view(req: Requirement) -> None: ...
+
+        resolvers = create_dependency_specs(view)
+        dependencies = await resolve_dependencies(
+            resolvers,
+            {
+                HTTPConnection: Request({"type": "http"}, mock.AsyncMock(), mock.AsyncMock()),
+            },
+        )
+        assert dependencies == {"req": "Request"}
+
+    async def test_two_lambda_dependency(self) -> None:
+        Requirement = typing.Annotated[str, lambda r, s: r.__class__.__name__ + s.__class__.__name__]
+
+        def view(req: Requirement) -> None: ...
+
+        resolvers = create_dependency_specs(view)
+        dependencies = await resolve_dependencies(
+            resolvers,
+            {
+                HTTPConnection: Request({"type": "http"}, mock.AsyncMock(), mock.AsyncMock()),
+            },
+        )
+        assert dependencies == {"req": "RequestDependencySpec"}
+
+    async def test_three_lambda_dependency(self) -> None:
+        Requirement = typing.Annotated[str, lambda r, s, c: None]
+
+        def view(req: Requirement) -> None: ...
+
+        with pytest.raises(DependencyError, match="should accept only zero, one, or two parameters"):
+            resolvers = create_dependency_specs(view)
+            await resolve_dependencies(
+                resolvers,
+                {
+                    HTTPConnection: Request({"type": "http"}, mock.AsyncMock(), mock.AsyncMock()),
+                },
+            )
+
+    async def test_function(self) -> None:
+        def factory() -> str:
+            return "value"
+
+        Requirement = typing.Annotated[str, factory]
+
+        def view(req: Requirement) -> None: ...
+
+        resolvers = create_dependency_specs(view)
+        dependencies = await resolve_dependencies(
+            resolvers,
+            {
+                HTTPConnection: Request({"type": "http"}, mock.AsyncMock(), mock.AsyncMock()),
+            },
+        )
+        assert dependencies == {"req": "value"}

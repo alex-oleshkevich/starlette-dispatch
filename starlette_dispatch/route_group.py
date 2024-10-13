@@ -66,7 +66,7 @@ class RouteGroup(typing.Sequence[BaseRoute]):
             async def endpoint(request: Request) -> Response:
                 dependencies = await resolve_dependencies(
                     resolvers,
-                    prepared_resolvers={
+                    overrides={
                         Request: request,
                         HTTPConnection: request,
                     },
@@ -124,7 +124,7 @@ class RouteGroup(typing.Sequence[BaseRoute]):
             async def endpoint(websocket: WebSocket) -> None:
                 dependencies = await resolve_dependencies(
                     resolvers,
-                    prepared_resolvers={
+                    overrides={
                         WebSocket: websocket,
                         HTTPConnection: websocket,
                     },

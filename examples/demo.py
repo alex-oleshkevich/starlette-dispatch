@@ -1,3 +1,4 @@
+import typing
 from pathlib import Path
 
 from starception import install_error_handler
@@ -94,6 +95,28 @@ def optional_path_dependency_view(value: FromPath[str] | None) -> Response:
 @group.get("/multi-two")
 def multiple_routes_view() -> Response:
     return PlainTextResponse(multiple_routes_view.__name__)
+
+
+@group.get("/zero-lambda-dep")
+def zero_lambda_dep_view(value: typing.Annotated[str, lambda: "value"]) -> Response:
+    return PlainTextResponse(value)
+
+
+@group.get("/one-lambda-dep")
+def one_lambda_dep_view(value: typing.Annotated[str, lambda r: r.__class__.__name__]) -> Response:
+    return PlainTextResponse(value)
+
+
+@group.get("/two-lambda-dep")
+def two_lambda_dep_view(
+    value: typing.Annotated[str, lambda r, s: r.__class__.__name__ + s.__class__.__name__],
+) -> Response:
+    return PlainTextResponse(value)
+
+
+@group.get("/value-dep")
+def value_dep_view(value: typing.Annotated[str, "value"]) -> Response:
+    return PlainTextResponse(value)
 
 
 @admin_group.get("/")

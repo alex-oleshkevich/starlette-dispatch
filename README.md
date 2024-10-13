@@ -329,6 +329,19 @@ class MyResolver(DependencyResolver):
 
 ## Contrib and support
 
+### Simple dependency definition
+
+Instead of using resolver classes, you can use these shortcuts to define dependencies.
+
+```python
+import typing
+
+SimpleValueDependency = typing.Annotated[str, 'simple_value']
+LambdaDependency = typing.Annotated[str, lambda: 'some value']
+RequestOnlyLambdaDependency = typing.Annotated[str, lambda request: request.query_params['value']]
+RequestAndSpecLambdaDependency = typing.Annotated[str, lambda request, spec: ...]
+```
+
 ### `FromPath` - inject path parameter as a dependency
 
 ```python
@@ -343,7 +356,7 @@ def my_view(value: FromPath[str]) -> None:
 ```
 
 If path value does not exist in `Request.path_parameters` then it will fail with error.
-However,  you can mark dependency as optional and then it will be `None` if path value does not exist.
+However, you can mark dependency as optional and then it will be `None` if path value does not exist.
 
 ```python
 from starlette_dispatch import FromPath, RouteGroup

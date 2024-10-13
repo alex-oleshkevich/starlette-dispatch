@@ -23,9 +23,7 @@ class DependencyRequiresValueError(Exception): ...
 
 class DependencyResolver(abc.ABC):  # pragma: no cover
     @abc.abstractmethod
-    async def resolve(
-        self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]
-    ) -> typing.Any: ...
+    async def resolve(self, spec: DependencySpec, overrides: dict[typing.Any, typing.Any]) -> typing.Any: ...
 
 
 class FactoryDependency(DependencyResolver):
@@ -38,9 +36,9 @@ class FactoryDependency(DependencyResolver):
         self._is_async = inspect.iscoroutinefunction(resolver)
         self._value: typing.Any = None
 
-    async def resolve(self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]) -> typing.Any:
-        prepared_dependencies = {**prepared_dependencies, DependencySpec: spec}
-        dependencies = await resolve_dependencies(self._dependencies, prepared_resolvers=prepared_dependencies)
+    async def resolve(self, spec: DependencySpec, overrides: dict[typing.Any, typing.Any]) -> typing.Any:
+        overrides = {**overrides, DependencySpec: spec}
+        dependencies = await resolve_dependencies(self._dependencies, overrides=overrides)
 
         if self._cached and self._value is not None:
             return self._value
@@ -52,9 +50,9 @@ class FactoryDependency(DependencyResolver):
 class NoDependencyResolver(DependencyResolver):
     """Resolver that raises an error when a dependency is not found."""
 
-    async def resolve(self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]) -> typing.Any:
-        if spec.param_type in prepared_dependencies:
-            return prepared_dependencies[spec.param_type]
+    async def resolve(self, spec: DependencySpec, overrides: dict[typing.Any, typing.Any]) -> typing.Any:
+        if spec.param_type in overrides:
+            return overrides[spec.param_type]
 
         message = (
             f'Cannot inject parameter "{spec.param_name}": '
@@ -69,7 +67,7 @@ class VariableDependency(DependencyResolver):
     def __init__(self, value: typing.Any) -> None:
         self._value = value
 
-    async def resolve(self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]) -> typing.Any:
+    async def resolve(self, spec: DependencySpec, overrides: dict[typing.Any, typing.Any]) -> typing.Any:
         return self._value
 
 
@@ -92,8 +90,8 @@ class RequestDependency(DependencyResolver):
         if len(signature.parameters) == 2:
             self.takes_spec = True
 
-    async def resolve(self, spec: DependencySpec, prepared_dependencies: dict[typing.Any, typing.Any]) -> typing.Any:
-        conn: HTTPConnection = prepared_dependencies[HTTPConnection]
+    async def resolve(self, spec: DependencySpec, overrides: dict[typing.Any, typing.Any]) -> typing.Any:
+        conn: HTTPConnection = overrides[HTTPConnection]
         if self.takes_spec:
             return self._fn(conn, spec)  # type: ignore[call-arg]
         return self._fn(conn)  # type: ignore[call-arg]
@@ -107,7 +105,7 @@ class DependencySpec:
     optional: bool
     annotation: typing.Any
     resolver: DependencyResolver
-    resolver_options: typing.Sequence[typing.Any]
+    resolver_options: list[typing.Any]
 
     async def resolve(self, prepared_dependencies: dict[typing.Any, typing.Any]) -> typing.Any:
         return await self.resolver.resolve(self, prepared_dependencies)
@@ -118,8 +116,8 @@ def create_dependency_from_parameter(parameter: inspect.Parameter) -> Dependency
     is_optional = False
     annotation: type = parameter.annotation
 
-    resolver: DependencyResolver | None
-    resolver_options: typing.Sequence[typing.Any] = []
+    resolver: DependencyResolver = NoDependencyResolver()
+    resolver_options: list[typing.Any] = []
 
     # if param is union then extract first non None argument from type
     # supports only cases like: typing.Annotated[T, func] | None
@@ -134,18 +132,58 @@ def create_dependency_from_parameter(parameter: inspect.Parameter) -> Dependency
 
     # resolve annotated dependencies like: typing.Annotated[T, func]
     param_type = annotation
-    if origin is typing.Annotated:
-        match typing.get_args(annotation):
-            case (defined_param_type, *options, defined_resolver) if isinstance(defined_resolver, DependencyResolver):
-                param_type = defined_param_type
-                resolver = defined_resolver
-                resolver_options = options
-            case _:
-                raise DependencyError(f'Dependency "{parameter}" does not contain factory in annotation.')
-    else:
-        resolver = NoDependencyResolver()
+    if origin is not typing.Annotated:
+        # unannotated parameters are allowed, but they will raise an error during resolution
+        # the NoDependencyResolver will try to look up the overridden type in the prepared dependencies
+        return DependencySpec(
+            optional=is_optional,
+            param_type=param_type,
+            default=parameter.default,
+            param_name=parameter.name,
+            resolver=NoDependencyResolver(),
+            annotation=parameter.annotation,
+            resolver_options=resolver_options,
+        )
 
-    assert resolver, f'Dependency "{parameter.annotation}" does not define the resolver.'
+    match typing.get_args(annotation):
+        case (defined_param_type, *options, DependencyResolver() as defined_resolver):
+            param_type = defined_param_type
+            resolver = defined_resolver
+            resolver_options = options
+        case (defined_param_type, *options, fn) if inspect.isfunction(fn) and fn.__name__ == "<lambda>":
+            param_type = defined_param_type
+            resolver_options = options
+            signature = inspect.signature(fn)
+            if len(signature.parameters) == 0:
+                resolver = FactoryDependency(fn)
+            elif len(signature.parameters) == 1:
+
+                def callback(request: HTTPConnection, spec: DependencySpec) -> typing.Any:
+                    return fn(request)
+
+                resolver = RequestDependency(callback)
+            elif len(signature.parameters) == 2:
+
+                def callback(request: HTTPConnection, spec: DependencySpec) -> typing.Any:
+                    return fn(request, spec)
+
+                resolver = RequestDependency(callback)
+            else:
+                raise DependencyError(
+                    "Lamda passed as dependency should accept only zero, one, or two parameters: "
+                    "(lambda: ...), (lambda request: ...), or (lambda request, spec: ...)."
+                )
+        case (defined_param_type, *options, fn) if inspect.isfunction(fn):
+            resolver_options = options
+            param_type = defined_param_type
+            resolver = FactoryDependency(fn)
+        case (defined_param_type, *options, value):
+            resolver_options = options
+            param_type = defined_param_type
+            resolver = VariableDependency(value)
+        case _:  # pragma: no cover, we never reach this line
+            ...
+
     return DependencySpec(
         resolver=resolver,
         optional=is_optional,
@@ -164,13 +202,13 @@ def create_dependency_specs(fn: typing.Callable[..., typing.Any]) -> typing.Mapp
 
 async def resolve_dependencies(
     resolvers: typing.Mapping[str, DependencySpec],
-    prepared_resolvers: typing.Mapping[type, typing.Any],
+    overrides: typing.Mapping[type, typing.Any],
 ) -> dict[str, typing.Any]:
     dependencies: dict[str, typing.Any] = {}
     for param_name, spec in resolvers.items():
         dependency = await spec.resolve(
             {
-                **prepared_resolvers,
+                **overrides,
                 DependencySpec: spec,
             }
         )
