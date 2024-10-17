@@ -39,14 +39,17 @@ class RouteGroup(typing.Sequence[BaseRoute]):
         self,
         prefix: str | None = None,
         middleware: typing.Sequence[Middleware] | None = None,
-        children: typing.Sequence[RouteGroup] | None = None,
+        children: typing.Sequence[RouteGroup | BaseRoute] | None = None,
     ) -> None:
         self.prefix = prefix or ""
         self.routes: list[BaseRoute] = []
         self._common_middleware = list(middleware or [])
 
         for child in children or []:
-            self.routes.extend(child)
+            if isinstance(child, RouteGroup):
+                self.routes.extend(child)
+            else:
+                self.routes.append(child)
 
     def add(
         self,

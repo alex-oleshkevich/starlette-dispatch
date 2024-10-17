@@ -5,7 +5,7 @@ from starlette.authentication import requires
 from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
-from starlette.routing import Route
+from starlette.routing import Mount, Route
 from starlette.testclient import TestClient
 from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.websockets import WebSocket
@@ -234,6 +234,25 @@ def test_children() -> None:
         return PlainTextResponse("ok")
 
     app = Starlette(routes=RouteGroup(children=[child_group]))
+    with TestClient(app) as client:
+        response = client.get("/test")
+        assert response.status_code == 200
+        assert response.text == "ok"
+
+    assert client.post("/test").status_code == 405
+
+
+def test_children_with_route() -> None:
+    def view(request: Request) -> Response:
+        return PlainTextResponse("ok")
+
+    app = Starlette(
+        routes=RouteGroup(
+            children=[
+                Mount(path="/", routes=[Route("/test", view)]),
+            ]
+        ),
+    )
     with TestClient(app) as client:
         response = client.get("/test")
         assert response.status_code == 200
