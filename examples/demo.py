@@ -1,3 +1,4 @@
+import functools
 import typing
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from examples.dependencies import (
 )
 from examples.middleware import ProvideUser
 from starlette_dispatch import FromPath, RouteGroup
+from starlette_dispatch.route_group import AsyncViewCallable
 
 this_dir = Path(__file__).parent
 templates = Jinja2Templates(this_dir / "templates")
@@ -117,6 +119,21 @@ def two_lambda_dep_view(
 @group.get("/value-dep")
 def value_dep_view(value: typing.Annotated[str, "value"]) -> Response:
     return PlainTextResponse(value)
+
+
+def view_decorator(fn: AsyncViewCallable) -> AsyncViewCallable:
+    @functools.wraps(fn)
+    async def inner_view(request: Request, **dependencies: typing.Any) -> Response:
+        request.state.decoratorvalue = "fromdecorator"
+        return await fn(request, **dependencies)
+
+    return inner_view
+
+
+@group.get("/decorator")
+@view_decorator
+async def with_decorator_view(request: Request, value: typing.Annotated[str, "value"]) -> Response:
+    return PlainTextResponse(value + " " + request.state.decoratorvalue)
 
 
 @admin_group.get("/")

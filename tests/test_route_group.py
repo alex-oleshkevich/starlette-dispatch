@@ -1,3 +1,4 @@
+import functools
 import typing
 
 from starlette.applications import Starlette
@@ -12,7 +13,7 @@ from starlette.websockets import WebSocket
 
 from starlette_dispatch.contrib.dependencies import PathParamValue
 from starlette_dispatch.injections import FactoryDependency
-from starlette_dispatch.route_group import RouteGroup
+from starlette_dispatch.route_group import AsyncViewCallable, RouteGroup
 
 
 class _ExampleMiddleware:
@@ -104,7 +105,28 @@ def test_injections(route_group: RouteGroup) -> None:
         assert response.text == "injected"
 
 
-def test_injections_with_multiple_routes_on_same_vieew(route_group: RouteGroup) -> None:
+def test_injections_with_decorator(route_group: RouteGroup) -> None:
+    def view_decorator(fn: AsyncViewCallable) -> AsyncViewCallable:
+        @functools.wraps(fn)
+        async def inner_view(request: Request, **dependencies: typing.Any) -> Response:
+            request.state.value = "fromdecorator"
+            return await fn(request, **dependencies)
+
+        return inner_view
+
+    @route_group.get("/test/{injection}")
+    @view_decorator
+    async def view(request: Request, injection: _Injection) -> Response:
+        return PlainTextResponse(injection + request.state.value)
+
+    app = Starlette(routes=route_group)
+    with TestClient(app) as client:
+        response = client.get("/test/injected")
+        assert response.status_code == 200
+        assert response.text == "injectedfromdecorator"
+
+
+def test_injections_with_multiple_routes_on_same_view(route_group: RouteGroup) -> None:
     @route_group.get("/test/{injection}")
     @route_group.get("/test/2/{injection}")
     async def view(request: Request, injection: _Injection) -> Response:

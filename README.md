@@ -1,4 +1,4 @@
-from examples.dependencies import Variable
+from starlette.routing import Routefrom examples.dependencies import Variable
 
 # Starlette Dispatch
 
@@ -327,6 +327,41 @@ class MyResolver(DependencyResolver):
     async def resolve(self, request: Request, spec: DependencySpec):
         """Use request and spec objects to create a value."""
         return None
+```
+
+## Dependencies with decorators
+
+Almost any view decorator can work with Starlette Dispatch if it accepts this signature:
+`async def view(request) -> Response`.
+However, this has some requirements:
+1. it should return an async function of `async def view(request, **kwargs)`
+2. it should call `functools.wraps` on the inner view, otherwise the view will lose its dependencies
+3. it should pass `**kwargs` to the inner view, as Starlette Dispatch passes dependencies via kwargs.
+
+Full listing:
+```python
+import functools
+from starlette.requests import Request
+from starlette_dispatch import RouteGroup
+from starlette.responses import Response, RedirectResponse
+
+
+def login_required(fn):
+    @functools.wraps(fn)
+    async def view(request, **kwargs):
+        if not request.user.is_authenticated:
+            return RedirectResponse('/')
+        return await fn(request, **kwargs)
+
+    return view
+
+
+group = RouteGroup()
+
+
+@group.get('/')
+@login_required
+async def view(request: Request) -> Response: ...
 ```
 
 ## Contrib and support

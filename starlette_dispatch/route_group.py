@@ -62,10 +62,10 @@ class RouteGroup(typing.Sequence[BaseRoute]):
         path = self.prefix.removesuffix("/") + path if self.prefix else path
 
         def decorator(view_callable: AnyViewCallable) -> AsyncViewCallable:
-            unwrapped_view_callable = unwrap_callable(view_callable)
-            resolvers = create_dependency_specs(unwrapped_view_callable)
+            # find the original view callable in order to parse the dependencies
+            actual_view_callable = unwrap_callable(view_callable)
+            resolvers = create_dependency_specs(actual_view_callable)
 
-            @functools.wraps(unwrapped_view_callable)
             async def endpoint(request: Request) -> Response:
                 dependencies = await resolve_dependencies(
                     resolvers,
@@ -74,9 +74,9 @@ class RouteGroup(typing.Sequence[BaseRoute]):
                         HTTPConnection: request,
                     },
                 )
-                if inspect.iscoroutinefunction(unwrapped_view_callable):
-                    return await typing.cast(AsyncViewCallable, unwrapped_view_callable)(**dependencies)
-                return await run_in_threadpool(typing.cast(SyncViewCallable, unwrapped_view_callable), **dependencies)
+                if inspect.iscoroutinefunction(view_callable):
+                    return await typing.cast(AsyncViewCallable, view_callable)(**dependencies)
+                return await run_in_threadpool(typing.cast(SyncViewCallable, view_callable), **dependencies)
 
             all_middleware = self._common_middleware + list(middleware or [])
             self.routes.append(Route(path, endpoint, name=name, methods=methods, middleware=all_middleware))

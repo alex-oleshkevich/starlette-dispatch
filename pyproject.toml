@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "starlette_dispatch"
 description = "Routing extensions for Starlette."
-version = "0.24.1"
+version = "0.25.0"
 authors = ["Alex Oleshkevich <alex.oleshkevich@gmail.com>"]
 license = "MIT"
 readme = "README.md"
