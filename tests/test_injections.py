@@ -224,18 +224,37 @@ async def test_optional_dependency_not_raises_for_none() -> None:
     assert dependencies == {"req": None}
 
 
-async def test_raises_for_unsupported_unions() -> None:
+async def test_optional_dependency_annotation() -> None:
+    Requirement = typing.Annotated[str | None, None]
+
+    def view(req: Requirement) -> None: ...
+
+    resolvers = create_dependency_specs(view)
+    dependencies = await resolve_dependencies(resolvers, {})
+    assert dependencies == {"req": None}
+
+
+async def test_optional_dependency_unsupported_union_annotation() -> None:
+    Requirement = typing.Annotated[str | int, 1]
+
+    def view(req: Requirement) -> None: ...
+
+    resolvers = create_dependency_specs(view)
+    dependencies = await resolve_dependencies(resolvers, {})
+    assert dependencies == {"req": 1}
+
+
+async def test_injects_unions() -> None:
     async def factory() -> float:
-        return time.time()
+        return 0.0
 
     AsyncFactory = typing.Annotated[float, FactoryDependency(factory, cached=True)]
 
     def view(dep: AsyncFactory | int) -> float:
         return dep
 
-    with pytest.raises(DependencyError, match="Only optional union types are supported"):
-        resolvers = create_dependency_specs(view)
-        await resolve_dependencies(resolvers, {})
+    resolvers = create_dependency_specs(view)
+    assert await resolve_dependencies(resolvers, {}) == {"dep": 0.0}
 
 
 async def test_without_factory() -> None:

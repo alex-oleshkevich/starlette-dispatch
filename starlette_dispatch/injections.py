@@ -3,6 +3,7 @@ from __future__ import annotations
 import abc
 import dataclasses
 import inspect
+import types
 import typing
 
 from starlette.requests import HTTPConnection
@@ -120,13 +121,8 @@ def create_dependency_from_parameter(parameter: inspect.Parameter) -> Dependency
     resolver_options: list[typing.Any] = []
 
     # if param is union then extract first non None argument from type
-    # supports only cases like: typing.Annotated[T, func] | None
     if origin is typing.Union:
         is_optional = type(None) in typing.get_args(parameter.annotation)
-        if not is_optional:
-            raise DependencyError(
-                f'Only optional union types are supported (like Type | None), got "{parameter.annotation}".'
-            )
         annotation = [arg for arg in typing.get_args(parameter.annotation) if arg is not None][0]
         origin = typing.get_origin(annotation)
 
@@ -178,6 +174,10 @@ def create_dependency_from_parameter(parameter: inspect.Parameter) -> Dependency
             param_type = defined_param_type
             resolver = FactoryDependency(fn)
         case (defined_param_type, *options, value):
+            if isinstance(defined_param_type, types.UnionType):
+                is_optional = types.NoneType in typing.get_args(defined_param_type)
+                defined_param_type = [arg for arg in typing.get_args(defined_param_type) if arg is not None][0]
+
             resolver_options = options
             param_type = defined_param_type
             resolver = VariableDependency(value)
