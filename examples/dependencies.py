@@ -12,7 +12,7 @@ from starlette_dispatch import (
     RequestResolver,
     VariableResolver,
 )
-from starlette_dispatch.injections import ResolveContext
+from starlette_dispatch.injections import DependencyScope, ResolveContext
 
 # provides user from request.user attribute
 CurrentUser = typing.Annotated[SimpleUser, RequestResolver(lambda r: r.user)]
@@ -21,7 +21,7 @@ CurrentUser = typing.Annotated[SimpleUser, RequestResolver(lambda r: r.user)]
 CurrentTime = typing.Annotated[float, FactoryResolver(lambda: time.time())]
 
 # computes current time once and caches it
-CachedCurrentTime = typing.Annotated[float, FactoryResolver(lambda: time.time(), cached=True)]
+CachedCurrentTime = typing.Annotated[float, FactoryResolver(lambda: time.time(), scope=DependencyScope.SINGLETON)]
 
 # provides a static value from a variable
 Variable = typing.Annotated[str, VariableResolver("value")]

@@ -7,6 +7,7 @@ from starlette_dispatch.injections import (
     VariableResolver,
     RequestResolver,
     ResolveContext,
+    DependencyScope,
 )
 from starlette_dispatch.route_group import RouteGroup
 
@@ -21,5 +22,6 @@ __all__ = [
     "PathParamValue",
     "FromPath",
     "ResolveContext",
+    "DependencyScope",
 ]
-__version__ = "0.27.1"
+__version__ = "0.27.2"

@@ -212,13 +212,17 @@ def my_view(value: Value) -> None:
 
 ### Factory dependency
 
-Factory dependency is a resolver that creates a value on each call. The result can be cached.
+Factory dependency is a resolver that creates a value on each call. The result can be cached globally or per request.
 The factory can have dependencies and can be async.
+
+Request cached dependencies are resolved once per request and cached for the duration of the request.
+In order to use request cached dependencies, you need to use `DependencyScope.REQUEST` scope.
+If you want to cache the dependency globally, you need to use `DependencyScope.SINGLETON` scope.
 
 ```python
 import typing
 
-from starlette_dispatch import FactoryResolver, RouteGroup
+from starlette_dispatch import FactoryResolver, RouteGroup, DependencyScope
 
 
 def make_dependency():
@@ -231,7 +235,8 @@ async def async_dependency():
 
 Value = typing.Annotated[str, FactoryResolver(make_dependency)]
 AsyncValue = typing.Annotated[str, FactoryResolver(async_dependency)]
-CachedValue = typing.Annotated[str, FactoryResolver(make_dependency, cached=True)]
+CachedValue = typing.Annotated[str, FactoryResolver(make_dependency, scope=DependencyScope.SINGLETON)]
+RequestCachedValue = typing.Annotated[str, FactoryResolver(make_dependency, scope=DependencyScope.REQUEST)]
 
 group = RouteGroup('/')
 
@@ -334,11 +339,13 @@ class MyResolver(DependencyResolver):
 Almost any view decorator can work with Starlette Dispatch if it accepts this signature:
 `async def view(request) -> Response`.
 However, this has some requirements:
+
 1. it should return an async function of `async def view(request, **kwargs)`
 2. it should call `functools.wraps` on the inner view, otherwise the view will lose its dependencies
 3. it should pass `**kwargs` to the inner view, as Starlette Dispatch passes dependencies via kwargs.
 
 Full listing:
+
 ```python
 import functools
 from starlette.requests import Request
