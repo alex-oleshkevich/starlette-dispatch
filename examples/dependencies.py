@@ -1,3 +1,4 @@
+import contextlib
 import time
 import typing
 
@@ -9,8 +10,9 @@ from starlette_dispatch import (
     DependencySpec,
     FactoryDependency,
     RequestDependency,
-    VariableDependency,
+    VariableResolver,
 )
+from starlette_dispatch.injections import ResolveContext
 
 # provides user from request.user attribute
 CurrentUser = typing.Annotated[SimpleUser, RequestDependency(lambda r: r.user)]
@@ -22,9 +24,9 @@ CurrentTime = typing.Annotated[float, FactoryDependency(lambda: time.time())]
 CachedCurrentTime = typing.Annotated[float, FactoryDependency(lambda: time.time(), cached=True)]
 
 # provides a static value from a variable
-Variable = typing.Annotated[str, VariableDependency("value")]
+Variable = typing.Annotated[str, VariableResolver("value")]
 
-ParentValue = typing.Annotated[str, VariableDependency("parent")]
+ParentValue = typing.Annotated[str, VariableResolver("parent")]
 
 
 def child_value(parent_value: ParentValue) -> str:
@@ -49,8 +51,18 @@ ComplexValue = typing.Annotated[str, FactoryDependency(complex_factory)]
 
 
 class CustomResolver(DependencyResolver):
-    async def resolve(self, spec: DependencySpec, predefined_deps: dict[str, typing.Any]) -> typing.Any:
+    async def resolve(self, context: ResolveContext, spec: DependencySpec) -> typing.Any:
         return f"resolved from {spec.param_name}"
 
 
 CustomResolverValue = typing.Annotated[str, CustomResolver()]
+
+
+@contextlib.contextmanager
+def enter_factory() -> typing.Generator[str, None, None]:
+    yield "enter"
+
+
+@contextlib.asynccontextmanager
+async def aenter_factory() -> typing.AsyncGenerator[str, None]:
+    yield "aenter"

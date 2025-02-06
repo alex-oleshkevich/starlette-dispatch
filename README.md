@@ -141,14 +141,14 @@ import typing
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from starlette_dispatch import RouteGroup, VariableDependency
+from starlette_dispatch import RouteGroup, VariableResolver
 
 
 class User: ...
 
 
 user = User()
-CurrentUser = typing.Annotated[str, VariableDependency(user)]
+CurrentUser = typing.Annotated[str, VariableResolver(user)]
 
 group = RouteGroup('/')
 
@@ -169,14 +169,14 @@ import typing
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from starlette_dispatch import RouteGroup, VariableDependency
+from starlette_dispatch import RouteGroup, VariableResolver
 
 
 class User: ...
 
 
 user = User()
-CurrentUser = typing.Annotated[str, VariableDependency(user)]
+CurrentUser = typing.Annotated[str, VariableResolver(user)]
 
 group = RouteGroup('/')
 
@@ -198,9 +198,9 @@ Variable dependency is a resolver that returns a simple value.
 ```python
 import typing
 
-from starlette_dispatch import RouteGroup, VariableDependency
+from starlette_dispatch import RouteGroup, VariableResolver
 
-Value = typing.Annotated[str, VariableDependency('hello')]
+Value = typing.Annotated[str, VariableResolver('hello')]
 
 group = RouteGroup('/')
 
@@ -320,13 +320,13 @@ and implementing the `resolve` method.
 ```python
 from starlette.requests import Request
 
-from starlette_dispatch import DependencyResolver, DependencySpec
+from starlette_dispatch import DependencyResolver, DependencySpec, ResolveContext
 
 
 class MyResolver(DependencyResolver):
-    async def resolve(self, request: Request, spec: DependencySpec):
+    async def resolve(self, context: ResolveContext, spec: DependencySpec):
         """Use request and spec objects to create a value."""
-        return None
+        return 'my dependency value'
 ```
 
 ## Dependencies with decorators

@@ -4,8 +4,9 @@ from starlette_dispatch.injections import (
     DependencyResolver,
     DependencySpec,
     FactoryDependency,
-    VariableDependency,
+    VariableResolver,
     RequestDependency,
+    ResolveContext,
 )
 from starlette_dispatch.route_group import RouteGroup
 
@@ -13,10 +14,12 @@ __all__ = [
     "DependencyResolver",
     "DependencySpec",
     "FactoryDependency",
-    "VariableDependency",
+    "VariableResolver",
     "RequestDependency",
     "DependencyError",
     "RouteGroup",
     "PathParamValue",
     "FromPath",
+    "ResolveContext",
 ]
+__version__ = "0.27.0"

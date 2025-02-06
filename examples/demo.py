@@ -11,6 +11,7 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.templating import Jinja2Templates
 
 from examples.dependencies import (
+    aenter_factory,
     AsyncValue,
     CachedCurrentTime,
     ChildValue,
@@ -18,6 +19,7 @@ from examples.dependencies import (
     CurrentTime,
     CurrentUser,
     CustomResolverValue,
+    enter_factory,
     Variable,
 )
 from examples.middleware import ProvideUser
@@ -134,6 +136,18 @@ def view_decorator(fn: AsyncViewCallable) -> AsyncViewCallable:
 @view_decorator
 async def with_decorator_view(request: Request, value: typing.Annotated[str, "value"]) -> Response:
     return PlainTextResponse(value + " " + request.state.decoratorvalue)
+
+
+@group.get("/cm")
+async def context_manager_view(
+    sync: typing.Annotated[str, enter_factory], asyncf: typing.Annotated[str, aenter_factory]
+) -> Response:
+    return JSONResponse(
+        {
+            "sync": sync,
+            "async": asyncf,
+        }
+    )
 
 
 @admin_group.get("/")

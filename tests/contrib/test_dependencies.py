@@ -7,7 +7,7 @@ from starlette.responses import PlainTextResponse, Response
 from starlette.testclient import TestClient
 
 from starlette_dispatch.contrib.dependencies import FromPath, PathParamValue
-from starlette_dispatch.injections import FactoryDependency, DependencyError, DependencySpec
+from starlette_dispatch.injections import DependencyError
 from starlette_dispatch.route_group import RouteGroup
 
 
@@ -67,19 +67,3 @@ class TestPathParamValue:
                 response = client.get("/test")
                 assert response.status_code == 200
                 assert response.text == "NoneType"
-
-    async def test_requires_http_context(self, route_group: RouteGroup) -> None:
-        with pytest.raises(DependencyError, match="no HTTP connection found"):
-            dependency = PathParamValue("key")
-            await dependency.resolve(
-                DependencySpec(
-                    param_name="key",
-                    param_type=str,
-                    default=None,
-                    optional=False,
-                    annotation=str,
-                    resolver_options=[],
-                    resolver=FactoryDependency(lambda: None),
-                ),
-                {},
-            )

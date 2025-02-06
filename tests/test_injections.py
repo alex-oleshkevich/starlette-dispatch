@@ -1,7 +1,7 @@
+import contextlib
 import dataclasses
 import time
 import typing
-from unittest import mock
 
 import pytest
 from starlette.requests import HTTPConnection, Request
@@ -11,11 +11,13 @@ from starlette_dispatch.injections import (
     DependencyError,
     DependencyNotFoundError,
     DependencyRequiresValueError,
+    DependencyScope,
     DependencySpec,
     FactoryDependency,
-    resolve_dependencies,
     RequestDependency,
-    VariableDependency,
+    resolve_dependencies,
+    ResolveContext,
+    VariableResolver,
 )
 
 
@@ -36,8 +38,9 @@ async def test_create_dependency_resolvers() -> None:
         return f"{dep} - {dep2}"
 
     resolvers = create_dependency_specs(view)
-    dependencies = await resolve_dependencies(resolvers, {})
-    assert dependencies == {"dep": 42, "dep2": "level2"}
+    request = Request({"type": "http"})
+    async with resolve_dependencies(request, resolvers) as dependencies:
+        assert dependencies == {"dep": 42, "dep2": "level2"}
 
 
 async def test_async_dependencies() -> None:
@@ -50,8 +53,9 @@ async def test_async_dependencies() -> None:
         return dep
 
     resolvers = create_dependency_specs(view)
-    dependencies = await resolve_dependencies(resolvers, {})
-    assert dependencies == {"dep": "ok"}
+    request = Request({"type": "http"})
+    async with resolve_dependencies(request, resolvers) as dependencies:
+        assert dependencies == {"dep": "ok"}
 
 
 async def test_async_subdependencies() -> None:
@@ -69,30 +73,32 @@ async def test_async_subdependencies() -> None:
         return dep
 
     resolvers = create_dependency_specs(view)
-    dependencies = await resolve_dependencies(resolvers, {})
-    assert dependencies == {"dep": "ok-ok"}
+    request = Request({"type": "http"})
+    async with resolve_dependencies(request, resolvers) as dependencies:
+        assert dependencies == {"dep": "ok-ok"}
 
 
 async def test_cached_dependencies() -> None:
     async def factory() -> float:
         return time.time()
 
-    AsyncFactory = typing.Annotated[float, FactoryDependency(factory, cached=True)]
+    AsyncFactory = typing.Annotated[float, FactoryDependency(factory, scope=DependencyScope.SINGLETON)]
 
     def view(dep: AsyncFactory) -> float:
         return dep
 
     resolvers = create_dependency_specs(view)
-    dependencies = await resolve_dependencies(resolvers, {})
-    dependencies2 = await resolve_dependencies(resolvers, {})
-    assert dependencies == dependencies2
+    request = Request({"type": "http"})
+    async with resolve_dependencies(request, resolvers) as dependencies:
+        async with resolve_dependencies(request, resolvers) as dependencies2:
+            assert dependencies == dependencies2
 
 
 async def test_cached_subdependencies() -> None:
     async def parent_factory() -> float:
         return time.time()
 
-    ParentFactory = typing.Annotated[float, FactoryDependency(parent_factory, cached=True)]
+    ParentFactory = typing.Annotated[float, FactoryDependency(parent_factory, scope=DependencyScope.SINGLETON)]
 
     async def factory(parent: ParentFactory) -> float:
         return parent
@@ -103,9 +109,10 @@ async def test_cached_subdependencies() -> None:
         return dep
 
     resolvers = create_dependency_specs(view)
-    dependencies = await resolve_dependencies(resolvers, {})
-    dependencies2 = await resolve_dependencies(resolvers, {})
-    assert dependencies == dependencies2
+    request = Request({"type": "http"})
+    async with resolve_dependencies(request, resolvers) as dependencies:
+        async with resolve_dependencies(request, resolvers) as dependencies2:
+            assert dependencies == dependencies2
 
 
 async def test_with_subdependencies() -> None:
@@ -125,8 +132,9 @@ async def test_with_subdependencies() -> None:
         return 0
 
     resolvers = create_dependency_specs(view)
-    dependencies = await resolve_dependencies(resolvers, {})
-    assert dependencies == {"user": user_data, "username": "admin"}
+    request = Request({"type": "http"})
+    async with resolve_dependencies(request, resolvers) as dependencies:
+        assert dependencies == {"user": user_data, "username": "admin"}
 
 
 async def test_raises_for_invalid_deps() -> None:
@@ -136,7 +144,9 @@ async def test_raises_for_invalid_deps() -> None:
 
     with pytest.raises(DependencyNotFoundError) as ex:
         resolvers = create_dependency_specs(view)
-        await resolve_dependencies(resolvers, {})
+        request = Request({"type": "http"})
+        async with resolve_dependencies(request, resolvers):
+            pass
     assert str(ex.value) == 'Cannot inject parameter "dep": no resolver registered for type "NotDep".'
 
 
@@ -148,13 +158,10 @@ async def test_calls_fallback_factories() -> None:
     def view(dep: NotDep) -> None: ...
 
     resolvers = create_dependency_specs(view)
-    dependencies = await resolve_dependencies(
-        resolvers,
-        {
-            NotDep: NotDep("fallback"),
-        },
-    )
-    assert dependencies == {"dep": NotDep("fallback")}
+    request = Request({"type": "http"})
+    static = {NotDep: NotDep("fallback")}
+    async with resolve_dependencies(request, resolvers, static) as dependencies:
+        assert dependencies == {"dep": NotDep("fallback")}
 
 
 async def test_mixes_annotated_and_prepared_deps() -> None:
@@ -165,13 +172,10 @@ async def test_mixes_annotated_and_prepared_deps() -> None:
     def view(dep: NotDep, dep2: _IntDependency) -> None: ...
 
     resolvers = create_dependency_specs(view)
-    dependencies = await resolve_dependencies(
-        resolvers,
-        {
-            NotDep: NotDep("fallback"),
-        },
-    )
-    assert dependencies == {"dep": NotDep("fallback"), "dep2": 42}
+    request = Request({"type": "http"})
+    static = {NotDep: NotDep("fallback")}
+    async with resolve_dependencies(request, resolvers, static) as dependencies:
+        assert dependencies == {"dep": NotDep("fallback"), "dep2": 42}
 
 
 async def test_injects_dependency_spec() -> None:
@@ -179,9 +183,10 @@ async def test_injects_dependency_spec() -> None:
         return ""
 
     resolvers = create_dependency_specs(view)
-    dependencies = await resolve_dependencies(resolvers, {})
-    assert isinstance(dependencies["spec"], DependencySpec)
-    assert dependencies["spec"].param_name == "spec"
+    request = Request({"type": "http"})
+    async with resolve_dependencies(request, resolvers) as dependencies:
+        assert isinstance(dependencies["spec"], DependencySpec)
+        assert dependencies["spec"].param_name == "spec"
 
 
 async def test_injects_dependency_spec_in_subdependencies() -> None:
@@ -193,9 +198,10 @@ async def test_injects_dependency_spec_in_subdependencies() -> None:
     def view(req: Requirement) -> None: ...
 
     resolvers = create_dependency_specs(view)
-    dependencies = await resolve_dependencies(resolvers, {})
-    assert isinstance(dependencies["req"], DependencySpec)
-    assert dependencies["req"].param_name == "spec"
+    request = Request({"type": "http"})
+    async with resolve_dependencies(request, resolvers) as dependencies:
+        assert isinstance(dependencies["req"], DependencySpec)
+        assert dependencies["req"].param_name == "spec"
 
 
 async def test_non_optional_dependency_raises_for_none() -> None:
@@ -208,7 +214,9 @@ async def test_non_optional_dependency_raises_for_none() -> None:
 
     resolvers = create_dependency_specs(view)
     with pytest.raises(DependencyRequiresValueError):
-        await resolve_dependencies(resolvers, {})
+        request = Request({"type": "http"})
+        async with resolve_dependencies(request, resolvers):
+            pass
 
 
 async def test_optional_dependency_not_raises_for_none() -> None:
@@ -220,8 +228,9 @@ async def test_optional_dependency_not_raises_for_none() -> None:
     def view(req: Requirement | None) -> None: ...
 
     resolvers = create_dependency_specs(view)
-    dependencies = await resolve_dependencies(resolvers, {})
-    assert dependencies == {"req": None}
+    request = Request({"type": "http"})
+    async with resolve_dependencies(request, resolvers) as dependencies:
+        assert dependencies == {"req": None}
 
 
 async def test_optional_dependency_annotation() -> None:
@@ -230,8 +239,9 @@ async def test_optional_dependency_annotation() -> None:
     def view(req: Requirement) -> None: ...
 
     resolvers = create_dependency_specs(view)
-    dependencies = await resolve_dependencies(resolvers, {})
-    assert dependencies == {"req": None}
+    request = Request({"type": "http"})
+    async with resolve_dependencies(request, resolvers) as dependencies:
+        assert dependencies == {"req": None}
 
 
 async def test_optional_dependency_unsupported_union_annotation() -> None:
@@ -240,21 +250,24 @@ async def test_optional_dependency_unsupported_union_annotation() -> None:
     def view(req: Requirement) -> None: ...
 
     resolvers = create_dependency_specs(view)
-    dependencies = await resolve_dependencies(resolvers, {})
-    assert dependencies == {"req": 1}
+    request = Request({"type": "http"})
+    async with resolve_dependencies(request, resolvers) as dependencies:
+        assert dependencies == {"req": 1}
 
 
 async def test_injects_unions() -> None:
     async def factory() -> float:
         return 0.0
 
-    AsyncFactory = typing.Annotated[float, FactoryDependency(factory, cached=True)]
+    AsyncFactory = typing.Annotated[float, FactoryDependency(factory, scope=DependencyScope.SINGLETON)]
 
     def view(dep: AsyncFactory | int) -> float:
         return dep
 
     resolvers = create_dependency_specs(view)
-    assert await resolve_dependencies(resolvers, {}) == {"dep": 0.0}
+    request = Request({"type": "http"})
+    async with resolve_dependencies(request, resolvers) as dependencies:
+        assert dependencies == {"dep": 0.0}
 
 
 async def test_without_factory() -> None:
@@ -262,7 +275,79 @@ async def test_without_factory() -> None:
         return dep
 
     resolvers = create_dependency_specs(view)
-    assert await resolve_dependencies(resolvers, {}) == {"dep": "str"}
+    request = Request({"type": "http"})
+    async with resolve_dependencies(request, resolvers) as dependencies:
+        assert dependencies == {"dep": "str"}
+
+
+async def test_sync_generator_dependency() -> None:
+    def parent_gen() -> typing.Generator[str, None, None]:
+        yield "parent"
+
+    def gen(parent: typing.Annotated[str, parent_gen]) -> typing.Generator[str, None, None]:
+        yield parent + " value"
+
+    def view(dep: typing.Annotated[str, gen]) -> str:
+        return dep
+
+    with pytest.raises(DependencyError, match="not supported"):
+        resolvers = create_dependency_specs(view)
+        request = Request({"type": "http"})
+        async with resolve_dependencies(request, resolvers):
+            pass
+
+
+async def test_async_generator_dependency() -> None:
+    async def parent_gen() -> typing.AsyncGenerator[str, None]:
+        yield "parent"
+
+    async def gen(parent: typing.Annotated[str, parent_gen]) -> typing.AsyncGenerator[str, None]:
+        yield parent + " value"
+
+    def view(dep: typing.Annotated[str, gen]) -> str | None:
+        return dep
+
+    with pytest.raises(DependencyError, match="not supported"):
+        resolvers = create_dependency_specs(view)
+        request = Request({"type": "http"})
+        async with resolve_dependencies(request, resolvers):
+            pass
+
+
+async def test_sync_context_manager_dependency() -> None:
+    @contextlib.contextmanager
+    def parent_gen() -> typing.Generator[str, None, None]:
+        yield "parent"
+
+    @contextlib.contextmanager
+    def gen(parent: typing.Annotated[str, parent_gen]) -> typing.Generator[str, None, None]:
+        yield parent + " value"
+
+    def view(dep: typing.Annotated[str, gen]) -> str | None:
+        return dep
+
+    resolvers = create_dependency_specs(view)
+    request = Request({"type": "http"})
+    async with resolve_dependencies(request, resolvers) as depdenencies:
+        assert depdenencies == {"dep": "parent value"}
+
+
+async def test_async_context_manager_dependency() -> None:
+    @contextlib.asynccontextmanager
+    async def parent_gen() -> typing.AsyncGenerator[str, None]:
+        yield "parent"
+
+    @contextlib.asynccontextmanager
+    async def gen(parent: typing.Annotated[str, parent_gen]) -> typing.AsyncGenerator[str, None]:
+        yield parent + " value"
+
+    def view(dep: typing.Annotated[str, gen]) -> str | None:
+        return dep
+
+    resolvers = create_dependency_specs(view)
+    request = Request({"type": "http"})
+    async with resolve_dependencies(request, resolvers) as depdenencies:
+        assert depdenencies == {"dep": "parent value"}
 
 
 class TestFactoryResolver:
@@ -280,7 +365,13 @@ class TestFactoryResolver:
             annotation=str,
             resolver_options=[],
         )
-        value = await resolver.resolve(spec, {})
+        context = ResolveContext(
+            connection=HTTPConnection({"type": "http"}),
+            sync_stack=contextlib.ExitStack(),
+            async_stack=contextlib.AsyncExitStack(),
+            static_dependencies={},
+        )
+        value = await resolver.resolve(context, spec)
         assert value == "abc"
 
     async def test_async_factory(self) -> None:
@@ -297,14 +388,20 @@ class TestFactoryResolver:
             annotation=str,
             resolver_options=[],
         )
-        value = await resolver.resolve(spec, {})
+        context = ResolveContext(
+            connection=HTTPConnection({"type": "http"}),
+            sync_stack=contextlib.ExitStack(),
+            async_stack=contextlib.AsyncExitStack(),
+            static_dependencies={},
+        )
+        value = await resolver.resolve(context, spec)
         assert value == "abc"
 
     async def test_cached_dependency(self) -> None:
         def factory() -> float:
             return time.time()
 
-        resolver = FactoryDependency(factory, cached=True)
+        resolver = FactoryDependency(factory, scope=DependencyScope.SINGLETON)
         spec = DependencySpec(
             resolver=resolver,
             optional=False,
@@ -314,15 +411,22 @@ class TestFactoryResolver:
             annotation=str,
             resolver_options=[],
         )
-        value = await resolver.resolve(spec, {})
-        value2 = await resolver.resolve(spec, {})
+
+        context = ResolveContext(
+            connection=HTTPConnection({"type": "http"}),
+            sync_stack=contextlib.ExitStack(),
+            async_stack=contextlib.AsyncExitStack(),
+            static_dependencies={},
+        )
+        value = await resolver.resolve(context, spec)
+        value2 = await resolver.resolve(context, spec)
         assert value == value2
 
     async def test_cached_dependency_failure(self) -> None:
         def factory() -> float:
             return time.time()
 
-        resolver = FactoryDependency(factory, cached=False)
+        resolver = FactoryDependency(factory, scope=DependencyScope.TRANSIENT)
         spec = DependencySpec(
             resolver=resolver,
             optional=False,
@@ -332,14 +436,81 @@ class TestFactoryResolver:
             annotation=str,
             resolver_options=[],
         )
-        value = await resolver.resolve(spec, {})
-        value2 = await resolver.resolve(spec, {})
+
+        context = ResolveContext(
+            connection=HTTPConnection({"type": "http"}),
+            sync_stack=contextlib.ExitStack(),
+            async_stack=contextlib.AsyncExitStack(),
+            static_dependencies={},
+        )
+        value = await resolver.resolve(context, spec)
+        value2 = await resolver.resolve(context, spec)
         assert value != value2
+
+    async def test_transient_dependency(self) -> None:
+        def factory() -> float:
+            return time.time()
+
+        resolver = FactoryDependency(factory, scope=DependencyScope.TRANSIENT)
+        spec = DependencySpec(
+            resolver=resolver,
+            optional=False,
+            param_type=str,
+            default=None,
+            param_name="dep",
+            annotation=str,
+            resolver_options=[],
+        )
+
+        context = ResolveContext(
+            connection=HTTPConnection({"type": "http"}),
+            sync_stack=contextlib.ExitStack(),
+            async_stack=contextlib.AsyncExitStack(),
+            static_dependencies={},
+        )
+        value = await resolver.resolve(context, spec)
+        value2 = await resolver.resolve(context, spec)
+        assert value != value2
+
+    async def test_request_dependency(self) -> None:
+        def factory() -> float:
+            return time.time()
+
+        resolver = FactoryDependency(factory, scope=DependencyScope.REQUEST)
+        spec = DependencySpec(
+            resolver=resolver,
+            optional=False,
+            param_type=str,
+            default=None,
+            param_name="dep",
+            annotation=str,
+            resolver_options=[],
+        )
+
+        context = ResolveContext(
+            connection=HTTPConnection({"type": "http"}),
+            sync_stack=contextlib.ExitStack(),
+            async_stack=contextlib.AsyncExitStack(),
+            static_dependencies={},
+        )
+        value = await resolver.resolve(context, spec)
+        value2 = await resolver.resolve(context, spec)
+        assert value == value2
+
+        context = ResolveContext(
+            connection=HTTPConnection({"type": "http"}),
+            sync_stack=contextlib.ExitStack(),
+            async_stack=contextlib.AsyncExitStack(),
+            static_dependencies={},
+        )
+        value3 = await resolver.resolve(context, spec)
+        assert value != value3
+        assert value2 != value3
 
 
 class TestVariableResolver:
     async def test_variable_resolver(self) -> None:
-        resolver = VariableDependency("abc")
+        resolver = VariableResolver("abc")
         spec = DependencySpec(
             resolver=resolver,
             optional=False,
@@ -349,7 +520,13 @@ class TestVariableResolver:
             annotation=str,
             resolver_options=[],
         )
-        value = await resolver.resolve(spec, {})
+        context = ResolveContext(
+            connection=HTTPConnection({"type": "http"}),
+            sync_stack=contextlib.ExitStack(),
+            async_stack=contextlib.AsyncExitStack(),
+            static_dependencies={},
+        )
+        value = await resolver.resolve(context, spec)
         assert value == "abc"
 
 
@@ -365,9 +542,13 @@ class TestRequestDependency:
             annotation=str,
             resolver_options=[],
         )
-        value = await resolver.resolve(
-            spec, {HTTPConnection: HTTPConnection({"type": "http", "state": {"dep": "abc"}})}
+        context = ResolveContext(
+            connection=HTTPConnection({"type": "http", "state": {"dep": "abc"}}),
+            sync_stack=contextlib.ExitStack(),
+            async_stack=contextlib.AsyncExitStack(),
+            static_dependencies={},
         )
+        value = await resolver.resolve(context, spec)
         assert value == "abc"
 
     async def test_request_only(self) -> None:
@@ -381,9 +562,13 @@ class TestRequestDependency:
             annotation=str,
             resolver_options=[],
         )
-        value = await resolver.resolve(
-            spec, {HTTPConnection: HTTPConnection({"type": "http", "state": {"dep": "abc"}})}
+        context = ResolveContext(
+            connection=HTTPConnection({"type": "http", "state": {"dep": "abc"}}),
+            sync_stack=contextlib.ExitStack(),
+            async_stack=contextlib.AsyncExitStack(),
+            static_dependencies={},
         )
+        value = await resolver.resolve(context, spec)
         assert value == "abc"
 
 
@@ -394,8 +579,9 @@ class TestGuessResolverType:
         def view(req: Requirement) -> None: ...
 
         resolvers = create_dependency_specs(view)
-        dependencies = await resolve_dependencies(resolvers, {})
-        assert dependencies == {"req": "value"}
+        request = Request({"type": "http"})
+        async with resolve_dependencies(request, resolvers) as dependencies:
+            assert dependencies == {"req": "value"}
 
     async def test_zero_lambda_dependency(self) -> None:
         Requirement = typing.Annotated[str, lambda: "value"]
@@ -403,13 +589,9 @@ class TestGuessResolverType:
         def view(req: Requirement) -> None: ...
 
         resolvers = create_dependency_specs(view)
-        dependencies = await resolve_dependencies(
-            resolvers,
-            {
-                HTTPConnection: Request({"type": "http"}, mock.AsyncMock(), mock.AsyncMock()),
-            },
-        )
-        assert dependencies == {"req": "value"}
+        request = Request({"type": "http"})
+        async with resolve_dependencies(request, resolvers) as dependencies:
+            assert dependencies == {"req": "value"}
 
     async def test_one_lambda_dependency(self) -> None:
         Requirement = typing.Annotated[str, lambda r: r.__class__.__name__]
@@ -417,13 +599,9 @@ class TestGuessResolverType:
         def view(req: Requirement) -> None: ...
 
         resolvers = create_dependency_specs(view)
-        dependencies = await resolve_dependencies(
-            resolvers,
-            {
-                HTTPConnection: Request({"type": "http"}, mock.AsyncMock(), mock.AsyncMock()),
-            },
-        )
-        assert dependencies == {"req": "Request"}
+        request = Request({"type": "http"})
+        async with resolve_dependencies(request, resolvers) as dependencies:
+            assert dependencies == {"req": "Request"}
 
     async def test_two_lambda_dependency(self) -> None:
         Requirement = typing.Annotated[str, lambda r, s: r.__class__.__name__ + s.__class__.__name__]
@@ -431,13 +609,9 @@ class TestGuessResolverType:
         def view(req: Requirement) -> None: ...
 
         resolvers = create_dependency_specs(view)
-        dependencies = await resolve_dependencies(
-            resolvers,
-            {
-                HTTPConnection: Request({"type": "http"}, mock.AsyncMock(), mock.AsyncMock()),
-            },
-        )
-        assert dependencies == {"req": "RequestDependencySpec"}
+        request = Request({"type": "http"})
+        async with resolve_dependencies(request, resolvers) as dependencies:
+            assert dependencies == {"req": "RequestDependencySpec"}
 
     async def test_three_lambda_dependency(self) -> None:
         Requirement = typing.Annotated[str, lambda r, s, c: None]
@@ -446,12 +620,9 @@ class TestGuessResolverType:
 
         with pytest.raises(DependencyError, match="should accept only zero, one, or two parameters"):
             resolvers = create_dependency_specs(view)
-            await resolve_dependencies(
-                resolvers,
-                {
-                    HTTPConnection: Request({"type": "http"}, mock.AsyncMock(), mock.AsyncMock()),
-                },
-            )
+            request = Request({"type": "http"})
+            async with resolve_dependencies(request, resolvers):
+                pass
 
     async def test_function(self) -> None:
         def factory() -> str:
@@ -462,10 +633,6 @@ class TestGuessResolverType:
         def view(req: Requirement) -> None: ...
 
         resolvers = create_dependency_specs(view)
-        dependencies = await resolve_dependencies(
-            resolvers,
-            {
-                HTTPConnection: Request({"type": "http"}, mock.AsyncMock(), mock.AsyncMock()),
-            },
-        )
-        assert dependencies == {"req": "value"}
+        request = Request({"type": "http"})
+        async with resolve_dependencies(request, resolvers) as dependencies:
+            assert dependencies == {"req": "value"}
