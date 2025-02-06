@@ -54,7 +54,7 @@ jobs:
                 run: uv sync
 
             -   name: "Run tests"
-                run: ./scripts/testcover.sh
+                run: uv run ./scripts/testcover.sh
 
             -   name: "Upload coverage"
                 uses: codecov/codecov-action@v3
