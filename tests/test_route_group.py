@@ -12,7 +12,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.websockets import WebSocket
 
 from starlette_dispatch.contrib.dependencies import PathParamValue
-from starlette_dispatch.injections import FactoryDependency
+from starlette_dispatch.injections import FactoryResolver
 from starlette_dispatch.route_group import AsyncViewCallable, RouteGroup
 
 
@@ -160,7 +160,7 @@ def test_route_dependency_injects_request(route_group: RouteGroup) -> None:
     def dependency(request: Request) -> str:
         return request.url.path
 
-    RequestDep = typing.Annotated[str, FactoryDependency(dependency)]
+    RequestDep = typing.Annotated[str, FactoryResolver(dependency)]
 
     @route_group.get("/")
     async def view(dep: RequestDep) -> Response:
@@ -177,7 +177,7 @@ def test_websocket_dependency_injects_websocket(route_group: RouteGroup) -> None
     def dependency(websocket: WebSocket) -> str:
         return websocket.url.path
 
-    RequestDep = typing.Annotated[str, FactoryDependency(dependency)]
+    RequestDep = typing.Annotated[str, FactoryResolver(dependency)]
 
     @route_group.websocket("/test")
     async def view(websocket: WebSocket, dep: RequestDep) -> None:

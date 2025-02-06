@@ -39,7 +39,7 @@ class DependencyScope(enum.StrEnum):
     REQUEST = "request"
 
 
-class FactoryDependency(DependencyResolver):
+class FactoryResolver(DependencyResolver):
     """Dependency resolver that resolves dependencies from factories."""
 
     def __init__(
@@ -121,7 +121,7 @@ class VariableResolver(DependencyResolver):
         return self._value
 
 
-class RequestDependency(DependencyResolver):
+class RequestResolver(DependencyResolver):
     """Helper resolver that uses request state to return dependency values.
     It accepts a callable that receives HTTPConnection (like Request or WebSocket) and returns a value.
 
@@ -200,19 +200,19 @@ def create_dependency_from_parameter(parameter: inspect.Parameter) -> Dependency
             resolver_options = options
             signature = inspect.signature(fn)
             if len(signature.parameters) == 0:
-                resolver = FactoryDependency(fn)
+                resolver = FactoryResolver(fn)
             elif len(signature.parameters) == 1:
 
                 def callback(request: HTTPConnection, spec: DependencySpec) -> typing.Any:
                     return fn(request)
 
-                resolver = RequestDependency(callback)
+                resolver = RequestResolver(callback)
             elif len(signature.parameters) == 2:
 
                 def callback(request: HTTPConnection, spec: DependencySpec) -> typing.Any:
                     return fn(request, spec)
 
-                resolver = RequestDependency(callback)
+                resolver = RequestResolver(callback)
             else:
                 raise DependencyError(
                     "Lamda passed as dependency should accept only zero, one, or two parameters: "
@@ -227,7 +227,7 @@ def create_dependency_from_parameter(parameter: inspect.Parameter) -> Dependency
         case (defined_param_type, *options, fn) if inspect.isfunction(fn):
             resolver_options = options
             param_type = defined_param_type
-            resolver = FactoryDependency(fn)
+            resolver = FactoryResolver(fn)
         case (defined_param_type, *options, value):
             if isinstance(defined_param_type, types.UnionType):
                 is_optional = types.NoneType in typing.get_args(defined_param_type)

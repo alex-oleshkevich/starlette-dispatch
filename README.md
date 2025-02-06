@@ -49,14 +49,14 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from starlette_dispatch import RouteGroup, RequestDependency
+from starlette_dispatch import RouteGroup, RequestResolver
 
 admin_middleware = [
     Middleware(AuthenticationMiddleware, backend=...)
 ]
 admin_routes = RouteGroup('/admin', middleware=admin_middleware)
 
-CurrentUser = typing.Annotated[SimpleUser, RequestDependency(lambda r: r.user)]
+CurrentUser = typing.Annotated[SimpleUser, RequestResolver(lambda r: r.user)]
 
 
 async def index_view(request: Request, user: CurrentUser) -> JSONResponse:
@@ -218,7 +218,7 @@ The factory can have dependencies and can be async.
 ```python
 import typing
 
-from starlette_dispatch import FactoryDependency, RouteGroup
+from starlette_dispatch import FactoryResolver, RouteGroup
 
 
 def make_dependency():
@@ -229,9 +229,9 @@ async def async_dependency():
     return 'hello'
 
 
-Value = typing.Annotated[str, FactoryDependency(make_dependency)]
-AsyncValue = typing.Annotated[str, FactoryDependency(async_dependency)]
-CachedValue = typing.Annotated[str, FactoryDependency(make_dependency, cached=True)]
+Value = typing.Annotated[str, FactoryResolver(make_dependency)]
+AsyncValue = typing.Annotated[str, FactoryResolver(async_dependency)]
+CachedValue = typing.Annotated[str, FactoryResolver(make_dependency, cached=True)]
 
 group = RouteGroup('/')
 
@@ -250,21 +250,21 @@ The factory function itself can have dependencies. They are defined in the same 
 ```python
 import typing
 
-from starlette_dispatch import FactoryDependency, RouteGroup
+from starlette_dispatch import FactoryResolver, RouteGroup
 
 
 def parent_dependency():
     return 'hello'
 
 
-ParentValue = typing.Annotated[str, FactoryDependency(parent_dependency)]
+ParentValue = typing.Annotated[str, FactoryResolver(parent_dependency)]
 
 
 def make_dependency(parent: ParentValue):
     return parent + ' world'
 
 
-Value = typing.Annotated[str, FactoryDependency(make_dependency)]
+Value = typing.Annotated[str, FactoryResolver(make_dependency)]
 
 group = RouteGroup('/')
 
@@ -305,11 +305,11 @@ objects.
 
 ```python
 import typing
-from starlette_dispatch import RequestDependency
+from starlette_dispatch import RequestResolver
 
 # example dependency that resolves to a value from query parameter
-Value = typing.Annotated[str, RequestDependency(lambda request, spec,: request.query_params['value'])]
-NoSpecValue = typing.Annotated[str, RequestDependency(lambda request: request.query_params['value'])]
+Value = typing.Annotated[str, RequestResolver(lambda request, spec,: request.query_params['value'])]
+NoSpecValue = typing.Annotated[str, RequestResolver(lambda request: request.query_params['value'])]
 ```
 
 ### Custom resolver

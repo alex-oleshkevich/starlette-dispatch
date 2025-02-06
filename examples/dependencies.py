@@ -8,20 +8,20 @@ from starlette.requests import Request
 from starlette_dispatch import (
     DependencyResolver,
     DependencySpec,
-    FactoryDependency,
-    RequestDependency,
+    FactoryResolver,
+    RequestResolver,
     VariableResolver,
 )
 from starlette_dispatch.injections import ResolveContext
 
 # provides user from request.user attribute
-CurrentUser = typing.Annotated[SimpleUser, RequestDependency(lambda r: r.user)]
+CurrentUser = typing.Annotated[SimpleUser, RequestResolver(lambda r: r.user)]
 
 # provides current time using factory dependency
-CurrentTime = typing.Annotated[float, FactoryDependency(lambda: time.time())]
+CurrentTime = typing.Annotated[float, FactoryResolver(lambda: time.time())]
 
 # computes current time once and caches it
-CachedCurrentTime = typing.Annotated[float, FactoryDependency(lambda: time.time(), cached=True)]
+CachedCurrentTime = typing.Annotated[float, FactoryResolver(lambda: time.time(), cached=True)]
 
 # provides a static value from a variable
 Variable = typing.Annotated[str, VariableResolver("value")]
@@ -33,21 +33,21 @@ def child_value(parent_value: ParentValue) -> str:
     return "child: " + parent_value
 
 
-ChildValue = typing.Annotated[str, FactoryDependency(child_value)]
+ChildValue = typing.Annotated[str, FactoryResolver(child_value)]
 
 
 async def async_value() -> str:
     return "async value"
 
 
-AsyncValue = typing.Annotated[str, FactoryDependency(async_value)]
+AsyncValue = typing.Annotated[str, FactoryResolver(async_value)]
 
 
 async def complex_factory(request: Request, spec: DependencySpec) -> str:
     return f"{request.url.path}, param: {spec.param_name}, type: {spec.param_type}"
 
 
-ComplexValue = typing.Annotated[str, FactoryDependency(complex_factory)]
+ComplexValue = typing.Annotated[str, FactoryResolver(complex_factory)]
 
 
 class CustomResolver(DependencyResolver):
