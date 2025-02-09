@@ -16,7 +16,7 @@ class ResolveContext:
     connection: HTTPConnection
     sync_stack: contextlib.ExitStack
     async_stack: contextlib.AsyncExitStack
-    static_dependencies: dict[typing.Any, typing.Any]
+    static_resolvers: dict[typing.Any, DependencyResolver]
 
 
 class DependencyError(Exception): ...
@@ -101,8 +101,8 @@ class NoDependencyResolver(DependencyResolver):
         if spec.param_type == DependencySpec:
             return spec
 
-        if spec.param_type in context.static_dependencies:
-            return context.static_dependencies[spec.param_type]
+        if spec.param_type in context.static_resolvers:
+            return await context.static_resolvers[spec.param_type].resolve(context, spec)
 
         message = (
             f'Cannot inject parameter "{spec.param_name}": '
@@ -221,7 +221,8 @@ def create_dependency_from_parameter(parameter: inspect.Parameter) -> Dependency
         case (defined_param_type, *options, fn) if inspect.isgeneratorfunction(fn) or inspect.isasyncgenfunction(fn):
             raise DependencyError(
                 "Generators are not supported as dependency factories. "
-                "Use context managers or async context managers instead."
+                "Use context managers or async context managers instead. "
+                f"Parameter: {parameter.name}, resolver: {fn}."
             )
 
         case (defined_param_type, *options, fn) if inspect.isfunction(fn):
@@ -255,30 +256,30 @@ def create_dependency_specs(fn: typing.Callable[..., typing.Any]) -> list[Depend
     return [create_dependency_from_parameter(parameter) for parameter in signature.parameters.values()]
 
 
-async def _solve_dependencies(context: ResolveContext, resolvers: list[DependencySpec]) -> dict[str, typing.Any]:
-    dependencies: dict[str, typing.Any] = {}
-    for spec in resolvers:
+async def _solve_dependencies(context: ResolveContext, dependencies: list[DependencySpec]) -> dict[str, typing.Any]:
+    solved_dependencies: dict[str, typing.Any] = {}
+    for spec in dependencies:
         dependency = await spec.resolve(context)
         if dependency is None and not spec.optional:
             message = f'Dependency "{spec.param_name}" has None value but it is not optional.'
             raise DependencyRequiresValueError(message)
-        dependencies[spec.param_name] = dependency
+        solved_dependencies[spec.param_name] = dependency
 
-    return dependencies
+    return solved_dependencies
 
 
 @contextlib.asynccontextmanager
 async def resolve_dependencies(
     connection: HTTPConnection,
-    resolvers: list[DependencySpec],
-    static_dependencies: dict[typing.Any, typing.Any] | None = None,
+    dependencies: list[DependencySpec],
+    static_resolvers: dict[typing.Any, DependencyResolver] | None = None,
 ) -> typing.AsyncGenerator[dict[str, typing.Any], None]:
     context = ResolveContext(
         connection=connection,
         sync_stack=contextlib.ExitStack(),
         async_stack=contextlib.AsyncExitStack(),
-        static_dependencies=static_dependencies or {},
+        static_resolvers=static_resolvers or {},
     )
     with context.sync_stack:
         async with context.async_stack:
-            yield await _solve_dependencies(context, resolvers)
+            yield await _solve_dependencies(context, dependencies)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import functools
 import inspect
 import typing
@@ -11,7 +12,12 @@ from starlette.responses import Response
 from starlette.routing import BaseRoute, Route, WebSocketRoute
 from starlette.websockets import WebSocket
 
-from starlette_dispatch.injections import create_dependency_specs, resolve_dependencies
+from starlette_dispatch.injections import (
+    create_dependency_specs,
+    DependencyResolver,
+    resolve_dependencies,
+    VariableResolver,
+)
 
 AsyncViewCallable = typing.Callable[..., typing.Awaitable[Response]]
 SyncViewCallable = typing.Callable[..., Response]
@@ -67,7 +73,16 @@ class RouteGroup(typing.Sequence[BaseRoute]):
             resolvers = create_dependency_specs(actual_view_callable)
 
             async def endpoint(request: Request) -> Response:
-                static_dependencies = {Request: request, HTTPConnection: request}
+                app_resolvers: dict[typing.Any, DependencyResolver] = {}
+                with contextlib.suppress(AttributeError):
+                    app_resolvers = request.app.state.dependency_resolvers
+
+                static_dependencies = {
+                    type(request.app): VariableResolver(request.app),
+                    Request: VariableResolver(request),
+                    HTTPConnection: VariableResolver(request),
+                    **app_resolvers,
+                }
                 async with resolve_dependencies(request, resolvers, static_dependencies) as dependencies:
                     if inspect.iscoroutinefunction(view_callable):
                         return await typing.cast(AsyncViewCallable, view_callable)(**dependencies)
@@ -120,7 +135,16 @@ class RouteGroup(typing.Sequence[BaseRoute]):
 
             @functools.wraps(unwrapped_view_callable)
             async def endpoint(websocket: WebSocket) -> None:
-                static_dependencies = {WebSocket: websocket, HTTPConnection: websocket}
+                app_resolvers: dict[typing.Any, DependencyResolver] = {}
+                with contextlib.suppress(AttributeError):
+                    app_resolvers = websocket.app.state.dependency_resolvers
+
+                static_dependencies = {
+                    type(websocket.app): VariableResolver(websocket.app),
+                    WebSocket: VariableResolver(websocket),
+                    HTTPConnection: VariableResolver(websocket),
+                    **app_resolvers,
+                }
                 async with resolve_dependencies(websocket, resolvers, static_dependencies) as dependencies:
                     await unwrapped_view_callable(**dependencies)
 

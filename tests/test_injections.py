@@ -11,6 +11,7 @@ from starlette_dispatch.injections import (
     DependencyError,
     DependencyNotFoundError,
     DependencyRequiresValueError,
+    DependencyResolver,
     DependencyScope,
     DependencySpec,
     FactoryResolver,
@@ -159,7 +160,7 @@ async def test_calls_fallback_factories() -> None:
 
     resolvers = create_dependency_specs(view)
     request = Request({"type": "http"})
-    static = {NotDep: NotDep("fallback")}
+    static: dict[typing.Any, DependencyResolver] = {NotDep: VariableResolver(NotDep("fallback"))}
     async with resolve_dependencies(request, resolvers, static) as dependencies:
         assert dependencies == {"dep": NotDep("fallback")}
 
@@ -173,7 +174,7 @@ async def test_mixes_annotated_and_prepared_deps() -> None:
 
     resolvers = create_dependency_specs(view)
     request = Request({"type": "http"})
-    static = {NotDep: NotDep("fallback")}
+    static: dict[typing.Any, DependencyResolver] = {NotDep: VariableResolver(NotDep("fallback"))}
     async with resolve_dependencies(request, resolvers, static) as dependencies:
         assert dependencies == {"dep": NotDep("fallback"), "dep2": 42}
 
@@ -369,7 +370,7 @@ class TestFactoryResolver:
             connection=HTTPConnection({"type": "http"}),
             sync_stack=contextlib.ExitStack(),
             async_stack=contextlib.AsyncExitStack(),
-            static_dependencies={},
+            static_resolvers={},
         )
         value = await resolver.resolve(context, spec)
         assert value == "abc"
@@ -392,7 +393,7 @@ class TestFactoryResolver:
             connection=HTTPConnection({"type": "http"}),
             sync_stack=contextlib.ExitStack(),
             async_stack=contextlib.AsyncExitStack(),
-            static_dependencies={},
+            static_resolvers={},
         )
         value = await resolver.resolve(context, spec)
         assert value == "abc"
@@ -416,7 +417,7 @@ class TestFactoryResolver:
             connection=HTTPConnection({"type": "http"}),
             sync_stack=contextlib.ExitStack(),
             async_stack=contextlib.AsyncExitStack(),
-            static_dependencies={},
+            static_resolvers={},
         )
         value = await resolver.resolve(context, spec)
         value2 = await resolver.resolve(context, spec)
@@ -441,7 +442,7 @@ class TestFactoryResolver:
             connection=HTTPConnection({"type": "http"}),
             sync_stack=contextlib.ExitStack(),
             async_stack=contextlib.AsyncExitStack(),
-            static_dependencies={},
+            static_resolvers={},
         )
         value = await resolver.resolve(context, spec)
         value2 = await resolver.resolve(context, spec)
@@ -466,7 +467,7 @@ class TestFactoryResolver:
             connection=HTTPConnection({"type": "http"}),
             sync_stack=contextlib.ExitStack(),
             async_stack=contextlib.AsyncExitStack(),
-            static_dependencies={},
+            static_resolvers={},
         )
         value = await resolver.resolve(context, spec)
         value2 = await resolver.resolve(context, spec)
@@ -491,7 +492,7 @@ class TestFactoryResolver:
             connection=HTTPConnection({"type": "http"}),
             sync_stack=contextlib.ExitStack(),
             async_stack=contextlib.AsyncExitStack(),
-            static_dependencies={},
+            static_resolvers={},
         )
         value = await resolver.resolve(context, spec)
         value2 = await resolver.resolve(context, spec)
@@ -501,7 +502,7 @@ class TestFactoryResolver:
             connection=HTTPConnection({"type": "http"}),
             sync_stack=contextlib.ExitStack(),
             async_stack=contextlib.AsyncExitStack(),
-            static_dependencies={},
+            static_resolvers={},
         )
         value3 = await resolver.resolve(context, spec)
         assert value != value3
@@ -524,7 +525,7 @@ class TestVariableResolver:
             connection=HTTPConnection({"type": "http"}),
             sync_stack=contextlib.ExitStack(),
             async_stack=contextlib.AsyncExitStack(),
-            static_dependencies={},
+            static_resolvers={},
         )
         value = await resolver.resolve(context, spec)
         assert value == "abc"
@@ -546,7 +547,7 @@ class TestRequestDependency:
             connection=HTTPConnection({"type": "http", "state": {"dep": "abc"}}),
             sync_stack=contextlib.ExitStack(),
             async_stack=contextlib.AsyncExitStack(),
-            static_dependencies={},
+            static_resolvers={},
         )
         value = await resolver.resolve(context, spec)
         assert value == "abc"
@@ -566,7 +567,7 @@ class TestRequestDependency:
             connection=HTTPConnection({"type": "http", "state": {"dep": "abc"}}),
             sync_stack=contextlib.ExitStack(),
             async_stack=contextlib.AsyncExitStack(),
-            static_dependencies={},
+            static_resolvers={},
         )
         value = await resolver.resolve(context, spec)
         assert value == "abc"
